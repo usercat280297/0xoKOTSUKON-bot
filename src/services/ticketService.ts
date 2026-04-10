@@ -239,10 +239,10 @@ export class TicketService {
     }
 
     const guildConfig = await this.guildConfigs.getByGuildId(ticket.guildId);
-    if (!guildConfig?.closedCategoryId || !guildConfig.logChannelId) {
+    if (!guildConfig?.logChannelId) {
       return {
         ok: false,
-        message: "Guild chưa cấu hình `closed category` hoặc `log channel`. Hãy dùng lệnh `/config` trước."
+        message: "Guild chưa cấu hình log channel. Hãy dùng lệnh /config set-log-channel trước."
       };
     }
 
@@ -259,10 +259,7 @@ export class TicketService {
       transcriptFileName: `${ticket.channelId}.html`
     });
 
-    await this.gateway.moveChannel(ticket.channelId, guildConfig.closedCategoryId);
-    await this.gateway.setRequesterSendPermission(ticket.channelId, ticket.userId, false);
-
-    const updated = await this.tickets.close(ticket.id, actor.actorId, transcriptMessageId);
+    await this.tickets.close(ticket.id, actor.actorId, transcriptMessageId);
     await this.tickets.addEvent({
       ticketId: ticket.id,
       actorId: actor.actorId,
@@ -272,7 +269,12 @@ export class TicketService {
       }
     });
 
-    return { ok: true, message: `Đã đóng ticket ${this.gateway.channelMention(updated.channelId)}.` };
+    await this.gateway.deleteChannel(ticket.channelId);
+
+    return {
+      ok: true,
+      message: `Đã đóng ticket, gửi transcript về ${this.gateway.channelMention(guildConfig.logChannelId)} và xóa kênh.`
+    };
   }
 
   private async reopenResolvedTicket(resolve: () => Promise<Ticket | null>, actor: ActorContext): Promise<ServiceResponse> {
@@ -290,18 +292,10 @@ export class TicketService {
       return { ok: false, message: "Bạn không có quyền mở lại ticket này." };
     }
 
-    await this.gateway.moveChannel(ticket.channelId, ticket.originalCategoryId);
-    await this.gateway.setRequesterSendPermission(ticket.channelId, ticket.userId, true);
-
-    const updated = await this.tickets.reopen(ticket.id);
-    await this.tickets.addEvent({
-      ticketId: ticket.id,
-      actorId: actor.actorId,
-      eventType: "ticket.reopened",
-      payload: {}
-    });
-
-    return { ok: true, message: `Đã mở lại ticket ${this.gateway.channelMention(updated.channelId)}.` };
+    return {
+      ok: false,
+      message: "Bot đang chạy ở chế độ xóa kênh khi close, nên không thể reopen ticket đã đóng."
+    };
   }
 
   private async resolvePanelOption(panelId: string, optionValue: string): Promise<{ panel: TicketPanelWithOptions; option: TicketOption } | null> {

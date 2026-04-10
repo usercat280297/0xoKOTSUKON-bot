@@ -58,7 +58,20 @@ export async function handleButtonInteraction(
   const result =
     parsed.action === "claim"
       ? await dependencies.tickets.claimByTicketId(parsed.ticketId, actor)
-      : await dependencies.tickets.closeByTicketId(parsed.ticketId, actor);
+      : await closeFromButton(interaction, dependencies.tickets, parsed.ticketId, actor);
 
   await replyEphemeral(interaction, result.message);
+}
+
+async function closeFromButton(
+  interaction: ButtonInteraction,
+  tickets: TicketService,
+  ticketId: string,
+  actor: { actorId: string; actorRoleIds: string[]; hasManageChannels: boolean }
+) {
+  if (!interaction.deferred && !interaction.replied) {
+    await interaction.deferReply({ ephemeral: true });
+  }
+
+  return tickets.closeByTicketId(ticketId, actor);
 }

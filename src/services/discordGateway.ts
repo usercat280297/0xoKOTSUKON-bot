@@ -48,6 +48,7 @@ export interface DiscordTicketGateway {
   createTicketChannel(params: CreateTicketChannelParams): Promise<CreateTicketChannelResult>;
   sendTicketIntro(params: SendTicketIntroParams): Promise<string>;
   updateTicketClaimState(channelId: string, ticketId: string, claimedBy: string): Promise<void>;
+  deleteChannel(channelId: string): Promise<void>;
   moveChannel(channelId: string, categoryId: string | null): Promise<void>;
   setRequesterSendPermission(channelId: string, requesterId: string, allowSend: boolean): Promise<void>;
   addChannelMember(channelId: string, userId: string): Promise<void>;
@@ -192,6 +193,11 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
       content,
       components: [buildTicketActionRow(ticketId, true)]
     });
+  }
+
+  public async deleteChannel(channelId: string): Promise<void> {
+    const channel = await this.getTextChannel(channelId);
+    await channel.delete("Ticket closed");
   }
 
   public async moveChannel(channelId: string, categoryId: string | null): Promise<void> {

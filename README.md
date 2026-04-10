@@ -7,7 +7,7 @@ Discord ticket bot built with `TypeScript + discord.js + Postgres`.
 - Multiple dropdown ticket panels
 - Per-option routing by required role, target category, and staff role
 - One open ticket per user per guild
-- Claim, close, reopen, add member, remove member
+- Claim, close, add member, remove member
 - HTML transcript logging
 - Daily opening window
 - Optional health endpoint for Render web service deploys
@@ -169,12 +169,20 @@ Important:
 - `/panel list`
 - `/panel disable`
 - `/config set-log-channel`
-- `/config set-closed-category`
 - `/ticket claim`
 - `/ticket close`
-- `/ticket reopen`
 - `/ticket add-member`
 - `/ticket remove-member`
+
+## Close behavior
+
+When a ticket is closed, the bot now:
+
+1. Generates the transcript
+2. Sends the transcript to the configured log channel
+3. Deletes the ticket channel permanently
+
+Because the channel is deleted, `reopen` is no longer supported in practice.
 
 ## Health endpoint
 

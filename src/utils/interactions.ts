@@ -8,7 +8,12 @@ export async function replyEphemeral(interaction: ReplyableInteraction, content:
     ephemeral: true
   };
 
-  if (interaction.deferred || interaction.replied) {
+  if (interaction.deferred && !interaction.replied) {
+    await interaction.editReply({ content });
+    return;
+  }
+
+  if (interaction.replied) {
     await interaction.followUp(payload);
     return;
   }

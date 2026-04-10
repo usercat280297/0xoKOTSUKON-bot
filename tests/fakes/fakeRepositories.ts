@@ -190,6 +190,7 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
   public createdChannels: CreateTicketChannelParams[] = [];
   public introMessages: SendTicketIntroParams[] = [];
   public claimUpdates: Array<{ channelId: string; ticketId: string; claimedBy: string }> = [];
+  public deletedChannels: string[] = [];
   public movedChannels: Array<{ channelId: string; categoryId: string | null }> = [];
   public requesterPermissions: Array<{ channelId: string; requesterId: string; allowSend: boolean }> = [];
   public addedMembers: Array<{ channelId: string; userId: string }> = [];
@@ -216,6 +217,10 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
 
   public async updateTicketClaimState(channelId: string, ticketId: string, claimedBy: string): Promise<void> {
     this.claimUpdates.push({ channelId, ticketId, claimedBy });
+  }
+
+  public async deleteChannel(channelId: string): Promise<void> {
+    this.deletedChannels.push(channelId);
   }
 
   public async moveChannel(channelId: string, categoryId: string | null): Promise<void> {

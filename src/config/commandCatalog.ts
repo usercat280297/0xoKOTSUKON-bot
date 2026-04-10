@@ -75,18 +75,6 @@ const configCommand = new SlashCommandBuilder()
       .addChannelOption((option) =>
         option.setName("channel").setDescription("Log text channel").addChannelTypes(ChannelType.GuildText).setRequired(true)
       )
-  )
-  .addSubcommand((subcommand) =>
-    subcommand
-      .setName("set-closed-category")
-      .setDescription("Set the category where closed tickets will be moved")
-      .addChannelOption((option) =>
-        option
-          .setName("category")
-          .setDescription("Closed ticket category")
-          .addChannelTypes(ChannelType.GuildCategory)
-          .setRequired(true)
-      )
   );
 
 const ticketCommand = new SlashCommandBuilder()
@@ -95,7 +83,6 @@ const ticketCommand = new SlashCommandBuilder()
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
   .addSubcommand((subcommand) => subcommand.setName("claim").setDescription("Claim the current ticket"))
   .addSubcommand((subcommand) => subcommand.setName("close").setDescription("Close the current ticket"))
-  .addSubcommand((subcommand) => subcommand.setName("reopen").setDescription("Reopen the current ticket"))
   .addSubcommand((subcommand) =>
     subcommand
       .setName("add-member")

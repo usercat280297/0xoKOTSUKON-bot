@@ -181,7 +181,7 @@ describe("TicketService", () => {
     expect(gateway.createdChannels).toHaveLength(0);
   });
 
-  it("claims, closes, and reopens a ticket with state and gateway updates", async () => {
+  it("claims and closes a ticket by sending the transcript then deleting the channel", async () => {
     guildConfigs.current = {
       guildId: "guild-1",
       logChannelId: "log-channel",
@@ -231,15 +231,7 @@ describe("TicketService", () => {
     });
     expect(closeResult.ok).toBe(true);
     expect(gateway.logMessages).toHaveLength(1);
-    expect(gateway.movedChannels[0]).toEqual({
-      channelId: "ticket-channel",
-      categoryId: "closed-category"
-    });
-    expect(gateway.requesterPermissions[0]).toEqual({
-      channelId: "ticket-channel",
-      requesterId: "user-1",
-      allowSend: false
-    });
+    expect(gateway.deletedChannels).toEqual(["ticket-channel"]);
     expect((await tickets.findById("ticket-1"))?.status).toBe("closed");
 
     const reopenResult = await service.reopenByChannelId("ticket-channel", {
@@ -247,16 +239,7 @@ describe("TicketService", () => {
       actorRoleIds: ["billing-staff"],
       hasManageChannels: false
     });
-    expect(reopenResult.ok).toBe(true);
-    expect(gateway.movedChannels[1]).toEqual({
-      channelId: "ticket-channel",
-      categoryId: "billing-category"
-    });
-    expect(gateway.requesterPermissions[1]).toEqual({
-      channelId: "ticket-channel",
-      requesterId: "user-1",
-      allowSend: true
-    });
-    expect((await tickets.findById("ticket-1"))?.status).toBe("open");
+    expect(reopenResult.ok).toBe(false);
+    expect(reopenResult.message).toContain("không thể reopen");
   });
 });

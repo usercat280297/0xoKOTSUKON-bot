@@ -129,16 +129,10 @@ async function handleConfigCommand(
       return;
     }
     case "set-closed-category": {
-      const category = interaction.options.getChannel("category", true);
-      if (category.type !== ChannelType.GuildCategory) {
-        await replyEphemeral(interaction, "Closed category must be a category channel.");
-        return;
-      }
-
-      await guildConfigs.upsert(interaction.guildId!, {
-        closedCategoryId: category.id
-      });
-      await replyEphemeral(interaction, `Closed ticket category set to <#${category.id}>.`);
+      await replyEphemeral(
+        interaction,
+        "Bot hiện đang được cấu hình theo kiểu đóng ticket là xóa hẳn kênh, nên closed category không còn được dùng nữa."
+      );
       return;
     }
     default:
@@ -162,6 +156,9 @@ async function handleTicketCommand(interaction: ChatInputCommandInteraction, tic
       return;
     }
     case "close": {
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.deferReply({ ephemeral: true });
+      }
       const result = await tickets.closeByChannelId(interaction.channelId, actor);
       await replyEphemeral(interaction, result.message);
       return;
