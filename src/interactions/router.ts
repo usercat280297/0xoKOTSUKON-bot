@@ -1,6 +1,6 @@
 import { ButtonInteraction, GuildMember, PermissionFlagsBits, StringSelectMenuInteraction } from "discord.js";
 import { TicketService } from "../services/ticketService";
-import { parsePanelSelectId, parseTicketButton } from "../utils/componentIds";
+import { parsePanelSelectId, parseTicketButton, parseTicketIssueSelectId } from "../utils/componentIds";
 import { extractDisplayName, extractRoleIds, replyEphemeral } from "../utils/interactions";
 
 export interface InteractionDependencies {
@@ -17,20 +17,27 @@ export async function handleStringSelectMenuInteraction(
   }
 
   const panelId = parsePanelSelectId(interaction.customId);
-  if (!panelId) {
+  if (panelId) {
+    const member = interaction.member instanceof GuildMember ? interaction.member : null;
+    const result = await dependencies.tickets.createFromSelection({
+      guildId: interaction.guildId,
+      panelId,
+      optionValue: interaction.values[0],
+      userId: interaction.user.id,
+      memberRoleIds: extractRoleIds(member),
+      displayName: extractDisplayName(member, interaction.user.username)
+    });
+
+    await replyEphemeral(interaction, result.message);
     return;
   }
 
-  const member = interaction.member instanceof GuildMember ? interaction.member : null;
-  const result = await dependencies.tickets.createFromSelection({
-    guildId: interaction.guildId,
-    panelId,
-    optionValue: interaction.values[0],
-    userId: interaction.user.id,
-    memberRoleIds: extractRoleIds(member),
-    displayName: extractDisplayName(member, interaction.user.username)
-  });
+  const ticketId = parseTicketIssueSelectId(interaction.customId);
+  if (!ticketId) {
+    return;
+  }
 
+  const result = await dependencies.tickets.selectIssueByTicketId(ticketId, interaction.values[0], interaction.user.id);
   await replyEphemeral(interaction, result.message);
 }
 

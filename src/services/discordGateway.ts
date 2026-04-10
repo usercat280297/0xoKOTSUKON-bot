@@ -12,6 +12,7 @@ import {
   TextChannel
 } from "discord.js";
 import { join } from "node:path";
+import { ticketIssueCatalog } from "../config/ticketIssueCatalog";
 import type { TicketPanelWithOptions, TranscriptMessage } from "../domain/types";
 import { ComponentIds } from "../utils/componentIds";
 
@@ -48,9 +49,8 @@ export interface DiscordTicketGateway {
   createTicketChannel(params: CreateTicketChannelParams): Promise<CreateTicketChannelResult>;
   sendTicketIntro(params: SendTicketIntroParams): Promise<string>;
   updateTicketClaimState(channelId: string, ticketId: string, claimedBy: string): Promise<void>;
+  updateTicketIssueState(channelId: string, ticketId: string, issueValue: string, issueLabel: string): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
-  moveChannel(channelId: string, categoryId: string | null): Promise<void>;
-  setRequesterSendPermission(channelId: string, requesterId: string, allowSend: boolean): Promise<void>;
   addChannelMember(channelId: string, userId: string): Promise<void>;
   removeChannelMember(channelId: string, userId: string): Promise<void>;
   fetchTranscriptMessages(channelId: string): Promise<TranscriptMessage[]>;
@@ -61,14 +61,40 @@ export interface DiscordTicketGateway {
 const GAME_ACTIVATION_ICON_URL =
   "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGlsaGxqOGY5Y2d2aXV0dnJzNzdodGtzdW9taGg1cmF6cmc2NXhqcCZlcD12MV9zdGlja2Vyc19zZWFyY2gmY3Q9cw/VeTIkcoBeync63rDWy/giphy.gif";
 const GAME_ACTIVATION_IMAGE = "game-steam-1_744287f2722049808217c58c22a3f801.jpg";
+const QUICK_DETAIL_FALLBACK = "Chưa chọn";
 
-function buildTicketControlContent(requesterId: string, panelName: string, optionLabel: string, claimedBy?: string): string {
+function buildTicketControlContent(
+  requesterId: string,
+  panelName: string,
+  optionLabel: string,
+  claimedBy?: string,
+  issueLabel?: string
+): string {
   return [
     `Ticket requester: <@${requesterId}>`,
     `Panel: **${panelName}**`,
     `Type: **${optionLabel}**`,
-    `Claimed by: ${claimedBy ? `<@${claimedBy}>` : "Unclaimed"}`
+    `Quick detail: **${issueLabel ?? QUICK_DETAIL_FALLBACK}**`,
+    `Claimed by: ${claimedBy ? `<@${claimedBy}>` : "Unclaimed"}`,
+    "",
+    "Chọn mô tả nhanh ở dropdown bên dưới rồi nhắn trực tiếp trong ticket này để staff xử lý nhanh hơn."
   ].join("\n");
+}
+
+function buildTicketIssueRow(ticketId: string, selectedIssueValue?: string): ActionRowBuilder<StringSelectMenuBuilder> {
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(ComponentIds.issueSelect(ticketId))
+      .setPlaceholder("Chọn mô tả nhanh vấn đề của bạn")
+      .addOptions(
+        ticketIssueCatalog.map((issue) => ({
+          label: issue.label,
+          value: issue.value,
+          description: issue.description,
+          default: issue.value === selectedIssueValue
+        }))
+      )
+  );
 }
 
 function buildTicketActionRow(ticketId: string, isClaimed: boolean): ActionRowBuilder<ButtonBuilder> {
@@ -89,6 +115,20 @@ function rowContainsCustomId(row: unknown, customId: string): boolean {
 
   const components = (row as { components?: Array<{ customId?: string | null }> }).components;
   return Array.isArray(components) && components.some((component) => component.customId === customId);
+}
+
+function readIssueLabelFromContent(content: string): string | null {
+  const match = content.match(/^Quick detail: \*\*(.+)\*\*$/m);
+  if (!match) {
+    return null;
+  }
+
+  return match[1] === QUICK_DETAIL_FALLBACK ? null : match[1];
+}
+
+function readClaimedByFromContent(content: string): string | null {
+  const match = content.match(/^Claimed by: <@(\d+)>$/m);
+  return match?.[1] ?? null;
 }
 
 export class DiscordJsTicketGateway implements DiscordTicketGateway {
@@ -170,48 +210,42 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     const channel = await this.getTextChannel(params.channelId);
     const message = await channel.send({
       content: buildTicketControlContent(params.requesterId, params.panelName, params.optionLabel),
-      components: [buildTicketActionRow(params.ticketId, false)]
+      components: [buildTicketIssueRow(params.ticketId), buildTicketActionRow(params.ticketId, false)]
     });
 
     return message.id;
   }
 
   public async updateTicketClaimState(channelId: string, ticketId: string, claimedBy: string): Promise<void> {
-    const channel = await this.getTextChannel(channelId);
-    const messages = await channel.messages.fetch({ limit: 50 });
-    const target = messages.find((message) => message.components.some((row) => rowContainsCustomId(row, ComponentIds.claimButton(ticketId))));
-
+    const target = await this.findTicketControlMessage(channelId, ticketId);
     if (!target) {
       return;
     }
 
-    const content = target.content.match(/^.*Claimed by: .*$/m)
-      ? target.content.replace(/^Claimed by: .*$/m, `Claimed by: <@${claimedBy}>`)
-      : `${target.content}\nClaimed by: <@${claimedBy}>`;
+    const currentIssueLabel = readIssueLabelFromContent(target.content) ?? undefined;
+    const selectedIssueValue = ticketIssueCatalog.find((issue) => issue.label === currentIssueLabel)?.value;
 
     await target.edit({
-      content,
-      components: [buildTicketActionRow(ticketId, true)]
+      content: this.replaceContentLine(target.content, /^Claimed by: .*$/m, `Claimed by: <@${claimedBy}>`),
+      components: [buildTicketIssueRow(ticketId, selectedIssueValue), buildTicketActionRow(ticketId, true)]
+    });
+  }
+
+  public async updateTicketIssueState(channelId: string, ticketId: string, issueValue: string, issueLabel: string): Promise<void> {
+    const target = await this.findTicketControlMessage(channelId, ticketId);
+    if (!target) {
+      return;
+    }
+
+    await target.edit({
+      content: this.replaceContentLine(target.content, /^Quick detail: \*\*.*\*\*$/m, `Quick detail: **${issueLabel}**`),
+      components: [buildTicketIssueRow(ticketId, issueValue), buildTicketActionRow(ticketId, Boolean(readClaimedByFromContent(target.content)))]
     });
   }
 
   public async deleteChannel(channelId: string): Promise<void> {
     const channel = await this.getTextChannel(channelId);
     await channel.delete("Ticket closed");
-  }
-
-  public async moveChannel(channelId: string, categoryId: string | null): Promise<void> {
-    const channel = await this.getTextChannel(channelId);
-    await channel.setParent(categoryId);
-  }
-
-  public async setRequesterSendPermission(channelId: string, requesterId: string, allowSend: boolean): Promise<void> {
-    const channel = await this.getTextChannel(channelId);
-    await channel.permissionOverwrites.edit(requesterId, {
-      SendMessages: allowSend,
-      ViewChannel: true,
-      ReadMessageHistory: true
-    });
   }
 
   public async addChannelMember(channelId: string, userId: string): Promise<void> {
@@ -290,6 +324,29 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     }
 
     return channel;
+  }
+
+  private async findTicketControlMessage(channelId: string, ticketId: string): Promise<Message | null> {
+    const channel = await this.getTextChannel(channelId);
+    const messages = await channel.messages.fetch({ limit: 50 });
+
+    return (
+      messages.find((message) =>
+        message.components.some(
+          (row) =>
+            rowContainsCustomId(row, ComponentIds.claimButton(ticketId)) ||
+            rowContainsCustomId(row, ComponentIds.issueSelect(ticketId))
+        )
+      ) ?? null
+    );
+  }
+
+  private replaceContentLine(content: string, pattern: RegExp, replacement: string): string {
+    if (pattern.test(content)) {
+      return content.replace(pattern, replacement);
+    }
+
+    return `${content}\n${replacement}`;
   }
 
   private buildPanelMessage(

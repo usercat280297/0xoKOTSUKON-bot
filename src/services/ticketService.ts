@@ -1,10 +1,11 @@
-import type { GuildConfigRepository, PanelRepository, TicketRepository } from "../repositories/interfaces";
+import { getTicketIssueByValue } from "../config/ticketIssueCatalog";
 import type { Ticket, TicketOption, TicketPanelWithOptions } from "../domain/types";
-import type { DiscordTicketGateway } from "./discordGateway";
+import type { GuildConfigRepository, PanelRepository, TicketRepository } from "../repositories/interfaces";
+import { shortenId, slugifyTicketName } from "../utils/formatters";
 import { BusinessHoursService } from "./businessHoursService";
+import type { DiscordTicketGateway } from "./discordGateway";
 import { PermissionService } from "./permissionService";
 import { TranscriptService } from "./transcriptService";
-import { shortenId, slugifyTicketName } from "../utils/formatters";
 
 export interface SelectionContext {
   guildId: string;
@@ -134,6 +135,43 @@ export class TicketService {
 
   public reopenByChannelId(channelId: string, actor: ActorContext): Promise<ServiceResponse> {
     return this.reopenResolvedTicket(() => this.tickets.findByChannelId(channelId), actor);
+  }
+
+  public async selectIssueByTicketId(ticketId: string, issueValue: string, actorId: string): Promise<ServiceResponse> {
+    const ticket = await this.tickets.findById(ticketId);
+    if (!ticket) {
+      return { ok: false, message: "Không tìm thấy ticket." };
+    }
+
+    if (ticket.status !== "open") {
+      return { ok: false, message: "Ticket này đã đóng." };
+    }
+
+    if (ticket.userId !== actorId) {
+      return { ok: false, message: "Chỉ người mở ticket mới có thể chọn mô tả nhanh trong panel này." };
+    }
+
+    const issue = getTicketIssueByValue(issueValue);
+    if (!issue) {
+      return { ok: false, message: "Lựa chọn này không hợp lệ." };
+    }
+
+    await this.tickets.addEvent({
+      ticketId: ticket.id,
+      actorId,
+      eventType: "ticket.issue_selected",
+      payload: {
+        issueValue: issue.value,
+        issueLabel: issue.label
+      }
+    });
+
+    await this.gateway.updateTicketIssueState(ticket.channelId, ticket.id, issue.value, issue.label);
+
+    return {
+      ok: true,
+      message: `Đã ghi nhận vấn đề của bạn: **${issue.label}**. Bạn có thể tiếp tục nhắn trực tiếp trong ticket này.`
+    };
   }
 
   public async addMember(channelId: string, memberId: string, actor: ActorContext): Promise<ServiceResponse> {

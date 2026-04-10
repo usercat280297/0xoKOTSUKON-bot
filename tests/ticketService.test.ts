@@ -105,6 +105,34 @@ describe("TicketService", () => {
     expect([...tickets.tickets.values()]).toHaveLength(1);
   });
 
+  it("lets the requester choose a quick issue detail inside the ticket", async () => {
+    tickets.seedTicket({
+      id: "ticket-1",
+      guildId: "guild-1",
+      userId: "user-1",
+      channelId: "ticket-channel",
+      optionId: "option-1",
+      status: "open",
+      originalCategoryId: "billing-category",
+      claimedBy: null,
+      closedBy: null,
+      closedAt: null,
+      transcriptMessageId: null
+    });
+
+    const result = await service.selectIssueByTicketId("ticket-1", "activation-help", "user-1");
+
+    expect(result.ok).toBe(true);
+    expect(gateway.issueUpdates).toEqual([
+      {
+        channelId: "ticket-channel",
+        ticketId: "ticket-1",
+        issueValue: "activation-help",
+        issueLabel: "Cần kích hoạt game"
+      }
+    ]);
+  });
+
   it("returns an ephemeral-style denial message when the member lacks the required role", async () => {
     const result = await service.createFromSelection({
       guildId: "guild-1",

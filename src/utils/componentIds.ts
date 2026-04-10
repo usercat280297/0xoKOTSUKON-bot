@@ -1,5 +1,6 @@
 export const ComponentIds = {
   panelSelect: (panelId: string) => `ticket-panel:${panelId}`,
+  issueSelect: (ticketId: string) => `ticket-issue:${ticketId}`,
   claimButton: (ticketId: string) => `ticket:claim:${ticketId}`,
   closeButton: (ticketId: string) => `ticket:close:${ticketId}`
 };
@@ -24,4 +25,13 @@ export function parseTicketButton(customId: string): { action: "claim" | "close"
   }
 
   return { action, ticketId };
+}
+
+export function parseTicketIssueSelectId(customId: string): string | null {
+  const [prefix, ticketId] = customId.split(":");
+  if (prefix !== "ticket-issue" || !ticketId) {
+    return null;
+  }
+
+  return ticketId;
 }
