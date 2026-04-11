@@ -20,6 +20,8 @@ function mapRow(row: Record<string, unknown>): GuildConfig {
 }
 
 export class PostgresGuildConfigRepository implements GuildConfigRepository {
+  private donationAllowedRoleIdsColumnExists: boolean | null = null;
+
   public constructor(private readonly pool: Pool) {}
 
   public async getByGuildId(guildId: string): Promise<GuildConfig | null> {
@@ -33,7 +35,7 @@ export class PostgresGuildConfigRepository implements GuildConfigRepository {
           donation_thanks_channel_id,
           donation_link_url,
           donation_qr_image_url,
-          donation_allowed_role_ids
+          COALESCE(to_jsonb(guild_configs) -> 'donation_allowed_role_ids', '[]'::jsonb) AS donation_allowed_role_ids
         FROM guild_configs
         WHERE guild_id = $1
       `,
@@ -71,6 +73,47 @@ export class PostgresGuildConfigRepository implements GuildConfigRepository {
       patch.donationAllowedRoleIds !== undefined
         ? patch.donationAllowedRoleIds ?? []
         : current?.donationAllowedRoleIds ?? [];
+
+    if (!(await this.hasDonationAllowedRoleIdsColumn())) {
+      const result = await this.pool.query(
+        `
+          INSERT INTO guild_configs (
+            guild_id,
+            log_channel_id,
+            closed_category_id,
+            donator_role_id,
+            donation_thanks_channel_id,
+            donation_link_url,
+            donation_qr_image_url,
+            updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          ON CONFLICT (guild_id)
+          DO UPDATE SET
+            log_channel_id = EXCLUDED.log_channel_id,
+            closed_category_id = EXCLUDED.closed_category_id,
+            donator_role_id = EXCLUDED.donator_role_id,
+            donation_thanks_channel_id = EXCLUDED.donation_thanks_channel_id,
+            donation_link_url = EXCLUDED.donation_link_url,
+            donation_qr_image_url = EXCLUDED.donation_qr_image_url,
+            updated_at = NOW()
+          RETURNING
+            guild_id,
+            log_channel_id,
+            closed_category_id,
+            donator_role_id,
+            donation_thanks_channel_id,
+            donation_link_url,
+            donation_qr_image_url
+        `,
+        [guildId, logChannelId, closedCategoryId, donatorRoleId, donationThanksChannelId, donationLinkUrl, donationQrImageUrl]
+      );
+
+      return {
+        ...mapRow(result.rows[0]),
+        donationAllowedRoleIds
+      };
+    }
 
     const result = await this.pool.query(
       `
@@ -119,5 +162,26 @@ export class PostgresGuildConfigRepository implements GuildConfigRepository {
     );
 
     return mapRow(result.rows[0]);
+  }
+
+  private async hasDonationAllowedRoleIdsColumn(): Promise<boolean> {
+    if (this.donationAllowedRoleIdsColumnExists !== null) {
+      return this.donationAllowedRoleIdsColumnExists;
+    }
+
+    const result = await this.pool.query(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'guild_configs'
+            AND column_name = 'donation_allowed_role_ids'
+        ) AS exists
+      `
+    );
+
+    this.donationAllowedRoleIdsColumnExists = Boolean(result.rows[0]?.exists);
+    return this.donationAllowedRoleIdsColumnExists;
   }
 }

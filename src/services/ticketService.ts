@@ -70,6 +70,14 @@ const SCREENSHOT_WINDOW_MS = 20 * 60 * 1000;
 const TOKEN_WINDOW_MS = 30 * 60 * 1000;
 const AUTO_CLOSE_AFTER_ACTIVATION_MS = 60 * 1000;
 const SYSTEM_ACTOR_ID = "system";
+const DEFAULT_DONATION_ALLOWED_ROLE_IDS_BY_GUILD: Record<string, string[]> = {
+  "1492076309323714570": [
+    "1492080961125355621",
+    "1492130518869999737",
+    "1492131096937238588",
+    "1492130703549267999"
+  ]
+};
 
 export class TicketService {
   public constructor(
@@ -950,16 +958,15 @@ export class TicketService {
   }
 
   private getExtraAllowedRoleIds(panel: TicketPanelWithOptions, guildConfig: Awaited<ReturnType<GuildConfigRepository["getByGuildId"]>>): string[] {
-    if (!guildConfig) {
-      return [];
-    }
-
-    if (this.isSteamActivationPanel(panel) && guildConfig.donatorRoleId) {
+    if (this.isSteamActivationPanel(panel) && guildConfig?.donatorRoleId) {
       return [guildConfig.donatorRoleId];
     }
 
     if (this.isDonationPanel(panel)) {
-      return guildConfig.donationAllowedRoleIds ?? [];
+      const configuredRoleIds = guildConfig?.donationAllowedRoleIds ?? [];
+      return configuredRoleIds.length > 0
+        ? configuredRoleIds
+        : DEFAULT_DONATION_ALLOWED_ROLE_IDS_BY_GUILD[panel.guildId] ?? [];
     }
 
     return [];

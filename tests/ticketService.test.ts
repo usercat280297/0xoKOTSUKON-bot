@@ -532,6 +532,38 @@ describe("TicketService", () => {
     });
   });
 
+  it("falls back to the live guild donation access roles when no extra config is stored", async () => {
+    const liveDonationPanel = {
+      ...makeDonationPanel(),
+      id: "panel-donation-live",
+      guildId: "1492076309323714570",
+      options: [
+        {
+          ...makeDonationPanel().options[0],
+          id: "donation-option-live",
+          panelId: "panel-donation-live"
+        }
+      ]
+    };
+    panels.seedPanel(liveDonationPanel);
+
+    const result = await service.createFromSelection({
+      guildId: "1492076309323714570",
+      panelId: "panel-donation-live",
+      optionValue: "donate",
+      userId: "user-3",
+      memberRoleIds: ["1492131096937238588"],
+      displayName: "Boosted Bob"
+    });
+
+    expect(result.ok).toBe(true);
+    expect(gateway.createdChannels.at(-1)).toMatchObject({
+      targetCategoryId: "donate-category",
+      staffRoleId: "donation-staff",
+      requesterId: "user-3"
+    });
+  });
+
   it("records donation proof and lets admin approve it", async () => {
     guildConfigs.current = {
       guildId: "guild-1",
