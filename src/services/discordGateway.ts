@@ -53,6 +53,7 @@ export interface DiscordTicketGateway {
   sendTicketIntro(params: SendTicketIntroParams): Promise<string>;
   updateTicketClaimState(channelId: string, ticketId: string, claimedBy: string): Promise<void>;
   updateTicketIssueState(channelId: string, ticketId: string, issueValue: string, issueLabel: string): Promise<void>;
+  sendChannelMessage(channelId: string, content: string): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
   addChannelMember(channelId: string, userId: string): Promise<void>;
   removeChannelMember(channelId: string, userId: string): Promise<void>;
@@ -83,7 +84,7 @@ const QUICK_DETAIL_FALLBACK = "Not selected yet";
 const MAX_SELECTS_PER_MESSAGE = 2;
 const MAX_OPTIONS_PER_SELECT = 25;
 
-function buildTicketControlContent(
+function buildDefaultTicketControlContent(
   requesterId: string,
   panelName: string,
   optionLabel: string,
@@ -98,6 +99,22 @@ function buildTicketControlContent(
     `Claimed by: ${claimedBy ? `<@${claimedBy}>` : "Unclaimed"}`,
     "",
     "Pick a quick issue summary from the dropdown below, then continue chatting directly in this ticket."
+  ].join("\n");
+}
+
+function buildSteamActivationTicketControlContent(
+  requesterId: string,
+  panelName: string,
+  optionLabel: string,
+  claimedBy?: string
+): string {
+  return [
+    `Ticket requester: <@${requesterId}>`,
+    `Panel: **${panelName}**`,
+    `Type: **${optionLabel}**`,
+    `Claimed by: ${claimedBy ? `<@${claimedBy}>` : "Unclaimed"}`,
+    "",
+    "Staff sẽ claim ticket trước. Sau đó user gửi ảnh màn hình giống mẫu để bot kiểm tra sơ bộ."
   ].join("\n");
 }
 
@@ -253,7 +270,7 @@ function buildSteamActivationTicketEmbed(): EmbedBuilder {
         "• không chịu trách nhiệm cho mọi bản mod hay ngữ hóa chứa dll dưới mọi hình thức. Nếu có, hãy việt hoá hay mod trước đó rồi crack sau.",
         `• TRƯỚC TIÊN, HÃY TẢI GAME CLEAN TỪ <#${STEAM_ACTIVATION_DOWNLOAD_GUIDE_CHANNEL_ID}> (NẾU TẢI TỪ STEAMTOOL RỒI THÌ KHÔNG CẦN NỮA) HÃY ĐỌC KĨ TRONG ĐẤY, RỒI CHỤP LẠI ẢNH MÀN HÌNH Y HỆT THẾ NÀY`,
         "",
-        "Sau khi gửi ảnh xong, tiếp tục chọn quick detail bên dưới rồi chat trực tiếp trong ticket."
+        "Khi staff đã claim ticket, hãy gửi ảnh xác minh ngay trong ticket này để bot kiểm tra sơ bộ."
       ].join("\n")
     )
     .setImage(`attachment://${STEAM_ACTIVATION_TICKET_IMAGE}`);
@@ -351,8 +368,9 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     const channel = await this.getTextChannel(params.channelId);
     const embeds: EmbedBuilder[] = [];
     const files: AttachmentBuilder[] = [];
+    const isSteamActivation = isSteamActivationTicket(params.panelName, params.panelTemplate);
 
-    if (isSteamActivationTicket(params.panelName, params.panelTemplate)) {
+    if (isSteamActivation) {
       embeds.push(buildSteamActivationTicketEmbed());
       files.push(
         new AttachmentBuilder(join(process.cwd(), STEAM_ACTIVATION_TICKET_IMAGE), {
@@ -362,10 +380,14 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     }
 
     const message = await channel.send({
-      content: buildTicketControlContent(params.requesterId, params.panelName, params.optionLabel),
+      content: isSteamActivation
+        ? buildSteamActivationTicketControlContent(params.requesterId, params.panelName, params.optionLabel)
+        : buildDefaultTicketControlContent(params.requesterId, params.panelName, params.optionLabel),
       embeds,
       files,
-      components: [buildTicketIssueRow(params.ticketId), buildTicketActionRow(params.ticketId, false)]
+      components: isSteamActivation
+        ? [buildTicketActionRow(params.ticketId, false)]
+        : [buildTicketIssueRow(params.ticketId), buildTicketActionRow(params.ticketId, false)]
     });
 
     return message.id;
@@ -379,11 +401,14 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
 
     const currentIssueLabel = readIssueLabelFromContent(target.content) ?? undefined;
     const selectedIssueValue = ticketIssueCatalog.find((issue) => issue.label === currentIssueLabel)?.value;
+    const hasIssueRow = target.components.some((row) => rowContainsCustomId(row, ComponentIds.issueSelect(ticketId)));
 
     await target.edit({
       content: this.replaceContentLine(target.content, /^Claimed by: .*$/m, `Claimed by: <@${claimedBy}>`),
       embeds: target.embeds.map((embed) => EmbedBuilder.from(embed)),
-      components: [buildTicketIssueRow(ticketId, selectedIssueValue), buildTicketActionRow(ticketId, true)]
+      components: hasIssueRow
+        ? [buildTicketIssueRow(ticketId, selectedIssueValue), buildTicketActionRow(ticketId, true)]
+        : [buildTicketActionRow(ticketId, true)]
     });
   }
 
@@ -393,11 +418,21 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
       return;
     }
 
+    const hasIssueRow = target.components.some((row) => rowContainsCustomId(row, ComponentIds.issueSelect(ticketId)));
+    if (!hasIssueRow) {
+      return;
+    }
+
     await target.edit({
       content: this.replaceContentLine(target.content, /^Quick detail: \*\*.*\*\*$/m, `Quick detail: **${issueLabel}**`),
       embeds: target.embeds.map((embed) => EmbedBuilder.from(embed)),
       components: [buildTicketIssueRow(ticketId, issueValue), buildTicketActionRow(ticketId, Boolean(readClaimedByFromContent(target.content)))]
     });
+  }
+
+  public async sendChannelMessage(channelId: string, content: string): Promise<void> {
+    const channel = await this.getTextChannel(channelId);
+    await channel.send({ content });
   }
 
   public async deleteChannel(channelId: string): Promise<void> {
@@ -553,12 +588,12 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
           "**Before You Start**",
           "• Pick the exact game from the correct menu below.",
           "• Check the visible stock line before opening a ticket.",
-          "• Use the in-ticket quick detail menu after the ticket is created.",
+          "• When staff claim your ticket, send the verification screenshot exactly like the sample in the ticket.",
           "",
           "**How To Request**",
           "• Select your game from one of the dropdown menus below.",
           "• The bot creates a private ticket in the mapped staff route.",
-          "• Continue chatting directly inside that ticket."
+          "• Wait for staff to claim, then upload your verification screenshot inside that ticket."
         ].join("\n")
       )
       .setImage(`attachment://${GAME_ACTIVATION_IMAGE}`)

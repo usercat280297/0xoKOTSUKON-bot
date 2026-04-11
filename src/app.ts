@@ -11,6 +11,7 @@ import { BusinessHoursService } from "./services/businessHoursService";
 import { DiscordJsTicketGateway } from "./services/discordGateway";
 import { PanelService } from "./services/panelService";
 import { PermissionService } from "./services/permissionService";
+import { TesseractSteamActivationScreenshotService } from "./services/steamActivationScreenshotService";
 import { TicketService } from "./services/ticketService";
 import { TranscriptService } from "./services/transcriptService";
 
@@ -46,6 +47,7 @@ export function createBotApp(env: BotEnv): BotApp {
   const gateway = new DiscordJsTicketGateway(client, businessHours);
   const permissionService = new PermissionService();
   const transcriptService = new TranscriptService();
+  const steamActivationScreenshots = new TesseractSteamActivationScreenshotService();
 
   const panelService = new PanelService(panelRepository, gateway);
   const ticketService = new TicketService(
@@ -55,7 +57,8 @@ export function createBotApp(env: BotEnv): BotApp {
     gateway,
     permissionService,
     transcriptService,
-    businessHours
+    businessHours,
+    steamActivationScreenshots
   );
 
   client.once("clientReady", () => {
@@ -95,6 +98,26 @@ export function createBotApp(env: BotEnv): BotApp {
           ephemeral: true
         });
       }
+    }
+  });
+
+  client.on("messageCreate", async (message) => {
+    if (message.author.bot || !message.inGuild()) {
+      return;
+    }
+
+    try {
+      await ticketService.handleIncomingTicketMessage({
+        channelId: message.channelId,
+        authorId: message.author.id,
+        attachments: [...message.attachments.values()].map((attachment) => ({
+          name: attachment.name ?? attachment.url.split("/").pop() ?? "attachment",
+          url: attachment.url,
+          contentType: attachment.contentType
+        }))
+      });
+    } catch (error) {
+      console.error("Failed to handle incoming ticket message.", error);
     }
   });
 

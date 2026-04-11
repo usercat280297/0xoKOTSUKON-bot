@@ -8,6 +8,7 @@ import {
   FakeDiscordGateway,
   FakeGuildConfigRepository,
   FakePanelRepository,
+  FakeSteamActivationScreenshotAnalyzer,
   FakeTicketRepository
 } from "./fakes/fakeRepositories";
 
@@ -59,11 +60,44 @@ function makePanel(): TicketPanelWithOptions {
   };
 }
 
+function makeSteamPanel(): TicketPanelWithOptions {
+  return {
+    id: "panel-steam",
+    guildId: "guild-1",
+    name: "STEAM ACTIVATION",
+    channelId: "steam-panel-channel",
+    messageId: null,
+    messageIds: [],
+    placeholder: "Choose a game",
+    template: "game-activation",
+    active: true,
+    options: [
+      {
+        id: "steam-option-1",
+        panelId: "panel-steam",
+        value: "resident-evil-requiem",
+        label: "Resident Evil Requiem",
+        emoji: null,
+        boardSection: "Steam (H-Z)",
+        stockRemaining: 1,
+        stockTotal: 1,
+        sortOrder: 1,
+        requiredRoleId: "gamers-role",
+        redirectChannelId: "role-channel",
+        targetCategoryId: "steam-category",
+        staffRoleId: "steam-staff",
+        active: true
+      }
+    ]
+  };
+}
+
 describe("TicketService", () => {
   let guildConfigs: FakeGuildConfigRepository;
   let panels: FakePanelRepository;
   let tickets: FakeTicketRepository;
   let gateway: FakeDiscordGateway;
+  let screenshots: FakeSteamActivationScreenshotAnalyzer;
   let service: TicketService;
 
   beforeEach(() => {
@@ -71,7 +105,10 @@ describe("TicketService", () => {
     panels = new FakePanelRepository();
     tickets = new FakeTicketRepository();
     gateway = new FakeDiscordGateway();
+    screenshots = new FakeSteamActivationScreenshotAnalyzer();
     panels.seedPanel(makePanel());
+    panels.seedPanel(makeSteamPanel());
+
     service = new TicketService(
       guildConfigs,
       panels,
@@ -86,7 +123,8 @@ describe("TicketService", () => {
           endHour: 24
         },
         () => new Date("2026-04-10T14:30:00.000Z")
-      )
+      ),
+      screenshots
     );
   });
 
@@ -201,7 +239,8 @@ describe("TicketService", () => {
           endHour: 24
         },
         () => new Date("2026-04-10T10:00:00.000Z")
-      )
+      ),
+      screenshots
     );
 
     const result = await serviceOutsideHours.createFromSelection({
@@ -278,5 +317,45 @@ describe("TicketService", () => {
     });
     expect(reopenResult.ok).toBe(false);
     expect(reopenResult.message).toContain("không thể reopen");
+  });
+
+  it("prompts for screenshot after claiming a steam activation ticket and validates the upload", async () => {
+    tickets.seedTicket({
+      id: "ticket-steam",
+      guildId: "guild-1",
+      userId: "user-1",
+      channelId: "steam-ticket-channel",
+      optionId: "steam-option-1",
+      status: "open",
+      originalCategoryId: "steam-category",
+      claimedBy: null,
+      closedBy: null,
+      closedAt: null,
+      transcriptMessageId: null
+    });
+
+    const claimResult = await service.claimByChannelId("steam-ticket-channel", {
+      actorId: "staff-1",
+      actorRoleIds: ["steam-staff"],
+      hasManageChannels: false
+    });
+
+    expect(claimResult.ok).toBe(true);
+    expect(gateway.channelMessages.at(-1)?.content).toContain("gửi 1 ảnh màn hình giống mẫu");
+
+    await service.handleIncomingTicketMessage({
+      channelId: "steam-ticket-channel",
+      authorId: "user-1",
+      attachments: [
+        {
+          name: "proof.webp",
+          url: "https://example.com/proof.webp",
+          contentType: "image/webp"
+        }
+      ]
+    });
+
+    expect(screenshots.seenUrls).toEqual(["https://example.com/proof.webp"]);
+    expect(gateway.channelMessages.at(-1)?.content).toContain("Ảnh xác minh đã qua kiểm tra sơ bộ.");
   });
 });

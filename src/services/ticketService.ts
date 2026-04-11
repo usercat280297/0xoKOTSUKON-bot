@@ -5,6 +5,10 @@ import { shortenId, slugifyTicketName } from "../utils/formatters";
 import { BusinessHoursService } from "./businessHoursService";
 import type { DiscordTicketGateway } from "./discordGateway";
 import { PermissionService } from "./permissionService";
+import type {
+  SteamActivationScreenshotAnalyzer,
+  SteamActivationScreenshotValidationResult
+} from "./steamActivationScreenshotService";
 import { TranscriptService } from "./transcriptService";
 
 export interface SelectionContext {
@@ -27,6 +31,18 @@ export interface ServiceResponse {
   message: string;
 }
 
+export interface IncomingTicketAttachment {
+  name: string;
+  url: string;
+  contentType: string | null;
+}
+
+export interface IncomingTicketMessage {
+  channelId: string;
+  authorId: string;
+  attachments: IncomingTicketAttachment[];
+}
+
 export class TicketService {
   public constructor(
     private readonly guildConfigs: GuildConfigRepository,
@@ -35,7 +51,8 @@ export class TicketService {
     private readonly gateway: DiscordTicketGateway,
     private readonly permissions: PermissionService,
     private readonly transcripts: TranscriptService,
-    private readonly businessHours: BusinessHoursService
+    private readonly businessHours: BusinessHoursService,
+    private readonly steamActivationScreenshots: SteamActivationScreenshotAnalyzer
   ) {}
 
   public async createFromSelection(input: SelectionContext): Promise<ServiceResponse> {
@@ -175,6 +192,58 @@ export class TicketService {
     };
   }
 
+  public async handleIncomingTicketMessage(input: IncomingTicketMessage): Promise<void> {
+    const imageAttachment = this.findImageAttachment(input.attachments);
+    if (!imageAttachment) {
+      return;
+    }
+
+    const ticket = await this.tickets.findByChannelId(input.channelId);
+    if (!ticket || ticket.status !== "open" || ticket.userId !== input.authorId) {
+      return;
+    }
+
+    const route = await this.resolveTicketRoute(ticket);
+    if (!route || !this.isSteamActivationPanel(route.panel)) {
+      return;
+    }
+
+    if (!ticket.claimedBy) {
+      await this.gateway.sendChannelMessage(
+        input.channelId,
+        `<@${input.authorId}> đợi staff claim ticket trước rồi hãy gửi lại ảnh xác minh nhé.`
+      );
+      return;
+    }
+
+    try {
+      const result = await this.steamActivationScreenshots.validateAttachmentUrl(imageAttachment.url);
+      await this.tickets.addEvent({
+        ticketId: ticket.id,
+        actorId: input.authorId,
+        eventType: result.passed ? "ticket.screenshot_validation_passed" : "ticket.screenshot_validation_failed",
+        payload: {
+          attachmentName: imageAttachment.name,
+          score: result.score,
+          matchedSignals: result.matchedSignals,
+          missingSignals: result.missingSignals,
+          ocrExcerpt: result.ocrExcerpt
+        }
+      });
+
+      await this.gateway.sendChannelMessage(input.channelId, this.buildScreenshotValidationMessage(result));
+    } catch (error) {
+      console.error("Failed to validate Steam activation screenshot.", error);
+      await this.gateway.sendChannelMessage(
+        input.channelId,
+        [
+          `<@${input.authorId}> bot chưa đọc được ảnh này.`,
+          "Hãy gửi lại ảnh rõ hơn, chụp trọn cửa sổ Windows Update Blocker và cửa sổ properties của thư mục game."
+        ].join("\n")
+      );
+    }
+  }
+
   public async addMember(channelId: string, memberId: string, actor: ActorContext): Promise<ServiceResponse> {
     const ticket = await this.tickets.findByChannelId(channelId);
     if (!ticket) {
@@ -233,8 +302,8 @@ export class TicketService {
       return { ok: false, message: "Ticket này đã đóng." };
     }
 
-    const option = await this.panels.getOptionById(ticket.optionId);
-    if (!option || !this.permissions.isStaff(actor.actorRoleIds, option.staffRoleId, actor.hasManageChannels)) {
+    const route = await this.resolveTicketRoute(ticket);
+    if (!route || !this.permissions.isStaff(actor.actorRoleIds, route.option.staffRoleId, actor.hasManageChannels)) {
       return { ok: false, message: "Bạn không có quyền claim ticket này." };
     }
 
@@ -255,6 +324,17 @@ export class TicketService {
     });
     await this.gateway.updateTicketClaimState(updated.channelId, updated.id, actor.actorId);
 
+    if (this.isSteamActivationPanel(route.panel)) {
+      await this.gateway.sendChannelMessage(
+        updated.channelId,
+        [
+          `<@${updated.userId}> staff đã claim ticket này.`,
+          "Hãy gửi 1 ảnh màn hình giống mẫu bot đã gửi trong ticket.",
+          "Bot sẽ kiểm tra sơ bộ các dấu hiệu như Windows Update Blocker, dấu X đỏ và cửa sổ properties của thư mục game trong SteamLibrary/steamapps/common."
+        ].join("\n")
+      );
+    }
+
     return { ok: true, message: `Đã claim ticket ${this.gateway.channelMention(updated.channelId)}.` };
   }
 
@@ -268,12 +348,20 @@ export class TicketService {
       return { ok: false, message: "Ticket này đã đóng." };
     }
 
-    const option = await this.panels.getOptionById(ticket.optionId);
-    if (!option) {
+    const route = await this.resolveTicketRoute(ticket);
+    if (!route) {
       return { ok: false, message: "Không resolve được route của ticket." };
     }
 
-    if (!this.permissions.canCloseTicket(actor.actorId, ticket.userId, actor.actorRoleIds, option.staffRoleId, actor.hasManageChannels)) {
+    if (
+      !this.permissions.canCloseTicket(
+        actor.actorId,
+        ticket.userId,
+        actor.actorRoleIds,
+        route.option.staffRoleId,
+        actor.hasManageChannels
+      )
+    ) {
       return { ok: false, message: "Bạn không có quyền đóng ticket này." };
     }
 
@@ -326,8 +414,8 @@ export class TicketService {
       return { ok: false, message: "Ticket này đang mở." };
     }
 
-    const option = await this.panels.getOptionById(ticket.optionId);
-    if (!option || !this.permissions.isStaff(actor.actorRoleIds, option.staffRoleId, actor.hasManageChannels)) {
+    const route = await this.resolveTicketRoute(ticket);
+    if (!route || !this.permissions.isStaff(actor.actorRoleIds, route.option.staffRoleId, actor.hasManageChannels)) {
       return { ok: false, message: "Bạn không có quyền mở lại ticket này." };
     }
 
@@ -349,6 +437,54 @@ export class TicketService {
     }
 
     return { panel, option };
+  }
+
+  private async resolveTicketRoute(ticket: Ticket): Promise<{ panel: TicketPanelWithOptions; option: TicketOption } | null> {
+    const option = await this.panels.getOptionById(ticket.optionId);
+    if (!option) {
+      return null;
+    }
+
+    const panel = await this.panels.getById(option.panelId);
+    if (!panel) {
+      return null;
+    }
+
+    return { panel, option };
+  }
+
+  private isSteamActivationPanel(panel: TicketPanelWithOptions): boolean {
+    return panel.template === "game-activation" && panel.name.trim().toUpperCase().includes("STEAM ACTIVATION");
+  }
+
+  private findImageAttachment(attachments: IncomingTicketAttachment[]): IncomingTicketAttachment | null {
+    return (
+      attachments.find((attachment) => {
+        if (attachment.contentType?.startsWith("image/")) {
+          return true;
+        }
+
+        return /\.(png|jpe?g|webp|bmp)$/i.test(attachment.name);
+      }) ?? null
+    );
+  }
+
+  private buildScreenshotValidationMessage(result: SteamActivationScreenshotValidationResult): string {
+    if (result.passed) {
+      return [
+        "Ảnh xác minh đã qua kiểm tra sơ bộ.",
+        `Điểm khớp mẫu: **${result.score}%**`,
+        `Tín hiệu khớp: ${result.matchedSignals.join(", ")}`,
+        "Staff có thể tiếp tục xử lý ticket này."
+      ].join("\n");
+    }
+
+    return [
+      "Ảnh này chưa khớp mẫu đủ để qua kiểm tra sơ bộ.",
+      `Điểm khớp mẫu: **${result.score}%**`,
+      `Còn thiếu: ${result.missingSignals.join("; ")}`,
+      "Hãy chụp lại sao cho thấy rõ cửa sổ Windows Update Blocker và cửa sổ properties của thư mục game."
+    ].join("\n");
   }
 
   private buildTicketChannelName(optionLabel: string, displayName: string, userId: string): string {

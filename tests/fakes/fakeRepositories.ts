@@ -13,6 +13,7 @@ import type {
   UpdatePanelOptionStockInput
 } from "../../src/domain/types";
 import type { DiscordTicketGateway, CreateTicketChannelParams, CreateTicketChannelResult, SendLogParams, SendTicketIntroParams } from "../../src/services/discordGateway";
+import type { SteamActivationScreenshotAnalyzer, SteamActivationScreenshotValidationResult } from "../../src/services/steamActivationScreenshotService";
 import type { GuildConfigRepository, PanelRepository, TicketRepository } from "../../src/repositories/interfaces";
 
 export class FakeGuildConfigRepository implements GuildConfigRepository {
@@ -210,6 +211,7 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
   public introMessages: SendTicketIntroParams[] = [];
   public claimUpdates: Array<{ channelId: string; ticketId: string; claimedBy: string }> = [];
   public issueUpdates: Array<{ channelId: string; ticketId: string; issueValue: string; issueLabel: string }> = [];
+  public channelMessages: Array<{ channelId: string; content: string }> = [];
   public deletedChannels: string[] = [];
   public movedChannels: Array<{ channelId: string; categoryId: string | null }> = [];
   public requesterPermissions: Array<{ channelId: string; requesterId: string; allowSend: boolean }> = [];
@@ -249,6 +251,10 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
     this.issueUpdates.push({ channelId, ticketId, issueValue, issueLabel });
   }
 
+  public async sendChannelMessage(channelId: string, content: string): Promise<void> {
+    this.channelMessages.push({ channelId, content });
+  }
+
   public async deleteChannel(channelId: string): Promise<void> {
     this.deletedChannels.push(channelId);
   }
@@ -280,5 +286,22 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
 
   public channelMention(channelId: string): string {
     return `<#${channelId}>`;
+  }
+}
+
+export class FakeSteamActivationScreenshotAnalyzer implements SteamActivationScreenshotAnalyzer {
+  public nextResult: SteamActivationScreenshotValidationResult = {
+    passed: true,
+    score: 92,
+    matchedSignals: ["thấy chữ của Windows Update Blocker", "thấy cửa sổ properties của thư mục game"],
+    missingSignals: [],
+    ocrExcerpt: "windows updates option disable updates file folder location steamapps common"
+  };
+
+  public seenUrls: string[] = [];
+
+  public async validateAttachmentUrl(url: string): Promise<SteamActivationScreenshotValidationResult> {
+    this.seenUrls.push(url);
+    return this.nextResult;
   }
 }
