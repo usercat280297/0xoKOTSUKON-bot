@@ -518,7 +518,7 @@ export class TicketService {
       return `Ảnh hợp lệ, độ khớp **${result.score}%**.`;
     }
 
-    return `Ảnh chưa đạt, độ khớp **${result.score}%**. Hãy gửi lại ảnh rõ hơn.`;
+    return "ảnh sai hoặc chưa đúng so với ảnh mẫu, xin vui lòng gửi lại ảnh";
   }
 
   private buildTicketChannelName(optionLabel: string, displayName: string, userId: string): string {

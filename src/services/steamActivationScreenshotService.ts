@@ -16,21 +16,34 @@ export interface SteamActivationScreenshotAnalyzer {
 const UPDATE_TEXT_SIGNALS = [
   "windows updates option",
   "windows update blocker",
+  "windows update blocke",
   "disable updates",
   "protect services settings",
-  "service status"
+  "service status",
+  "opcion de actualizaciones de windows",
+  "deshabilitar actualizaciones",
+  "estado del servicio"
 ];
 
 const FOLDER_TEXT_SIGNALS = [
   "properties",
+  "propiedades",
   "file folder",
+  "fle folder",
+  "carpeta de archivos",
+  "corpeta de archivos",
   "location",
+  "locator",
+  "ubicacion",
   "size on disk",
   "contains",
-  "attributes"
+  "attributes",
+  "folders",
+  "archivos",
+  "tipo"
 ];
 
-const GAME_PATH_SIGNALS = ["steamapps", "common", "steamlibrary"];
+const GAME_PATH_SIGNALS = ["steamapps", "common", "cormon", "steamlibrary", "steanlibray", "carpetasteam", "binaries", "win64"];
 
 function normalizeOcrText(input: string): string {
   return input
@@ -87,7 +100,7 @@ export function scoreSteamActivationScreenshot(input: {
   const score =
     (hasUpdateSignal ? 0.45 : 0) +
     (Math.min(folderMatches.length, 3) / 3) * 0.35 +
-    (pathMatches.length > 0 ? 0.2 : 0);
+    (Math.min(pathMatches.length, 2) / 2) * 0.2;
   const roundedScore = Math.round(score * 100);
 
   return {
@@ -131,7 +144,7 @@ async function detectRedStatusBadge(imageBuffer: Buffer): Promise<boolean> {
     return false;
   }
 
-  return redPixels / rightSidePixels >= 0.008;
+  return redPixels / rightSidePixels >= 0.004;
 }
 
 export class TesseractSteamActivationScreenshotService implements SteamActivationScreenshotAnalyzer {
