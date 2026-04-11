@@ -151,6 +151,10 @@ export class TicketService {
     return this.closeResolvedTicket(() => this.tickets.findByChannelId(channelId), actor);
   }
 
+  public activateByTicketId(ticketId: string, actor: ActorContext): Promise<ServiceResponse> {
+    return this.activateResolvedTicket(() => this.tickets.findById(ticketId), actor);
+  }
+
   public reopenByChannelId(channelId: string, actor: ActorContext): Promise<ServiceResponse> {
     return this.reopenResolvedTicket(() => this.tickets.findByChannelId(channelId), actor);
   }
@@ -232,7 +236,11 @@ export class TicketService {
         }
       });
 
-      await this.gateway.sendChannelMessage(input.channelId, this.buildScreenshotValidationMessage(result));
+      if (result.passed) {
+        await this.gateway.sendVerificationReadyPrompt(input.channelId, ticket.id);
+      } else {
+        await this.gateway.sendChannelMessage(input.channelId, this.buildScreenshotValidationMessage(result));
+      }
     } catch (error) {
       console.error("Failed to validate Steam activation screenshot.", error);
       await this.gateway.sendChannelMessage(
@@ -402,6 +410,41 @@ export class TicketService {
     return {
       ok: true,
       message: `Đã đóng ticket, gửi transcript về ${this.gateway.channelMention(guildConfig.logChannelId)} và xóa kênh.`
+    };
+  }
+
+  private async activateResolvedTicket(resolve: () => Promise<Ticket | null>, actor: ActorContext): Promise<ServiceResponse> {
+    const ticket = await resolve();
+    if (!ticket) {
+      return { ok: false, message: "Không tìm thấy ticket." };
+    }
+
+    if (ticket.status !== "open") {
+      return { ok: false, message: "Ticket này đã đóng." };
+    }
+
+    const route = await this.resolveTicketRoute(ticket);
+    if (!route) {
+      return { ok: false, message: "Không resolve được route của ticket." };
+    }
+
+    const isRequester = actor.actorId === ticket.userId;
+    const isStaff = this.permissions.isStaff(actor.actorRoleIds, route.option.staffRoleId, actor.hasManageChannels);
+    if (!isRequester && !isStaff) {
+      return { ok: false, message: "Bạn không có quyền dùng nút activation này." };
+    }
+
+    await this.tickets.addEvent({
+      ticketId: ticket.id,
+      actorId: actor.actorId,
+      eventType: "ticket.activation_requested",
+      payload: {}
+    });
+    await this.gateway.markVerificationReadyState(ticket.channelId, ticket.id, actor.actorId);
+
+    return {
+      ok: true,
+      message: "Đã chuyển ticket sang bước activation."
     };
   }
 

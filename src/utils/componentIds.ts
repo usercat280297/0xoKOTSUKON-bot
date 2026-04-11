@@ -3,6 +3,7 @@ export const ComponentIds = {
   panelReset: (panelId: string) => `ticket-panel-reset:${panelId}`,
   issueSelect: (ticketId: string) => `ticket-issue:${ticketId}`,
   claimButton: (ticketId: string) => `ticket:claim:${ticketId}`,
+  activationButton: (ticketId: string) => `ticket:activate:${ticketId}`,
   closeButton: (ticketId: string) => `ticket:close:${ticketId}`
 };
 
@@ -15,13 +16,13 @@ export function parsePanelSelectId(customId: string): string | null {
   return panelId;
 }
 
-export function parseTicketButton(customId: string): { action: "claim" | "close"; ticketId: string } | null {
+export function parseTicketButton(customId: string): { action: "claim" | "close" | "activate"; ticketId: string } | null {
   const [namespace, action, ticketId] = customId.split(":");
   if (namespace !== "ticket" || !ticketId) {
     return null;
   }
 
-  if (action !== "claim" && action !== "close") {
+  if (action !== "claim" && action !== "close" && action !== "activate") {
     return null;
   }
 

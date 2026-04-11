@@ -77,6 +77,8 @@ export async function handleButtonInteraction(
   const result =
     parsed.action === "claim"
       ? await dependencies.tickets.claimByTicketId(parsed.ticketId, actor)
+      : parsed.action === "activate"
+        ? await dependencies.tickets.activateByTicketId(parsed.ticketId, actor)
       : await closeFromButton(interaction, dependencies.tickets, parsed.ticketId, actor);
 
   await replyEphemeral(interaction, result.message);

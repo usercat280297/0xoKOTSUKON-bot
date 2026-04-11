@@ -54,6 +54,8 @@ export interface DiscordTicketGateway {
   updateTicketClaimState(channelId: string, ticketId: string, claimedBy: string): Promise<void>;
   updateTicketIssueState(channelId: string, ticketId: string, issueValue: string, issueLabel: string): Promise<void>;
   sendChannelMessage(channelId: string, content: string): Promise<void>;
+  sendVerificationReadyPrompt(channelId: string, ticketId: string): Promise<void>;
+  markVerificationReadyState(channelId: string, ticketId: string, activatedBy: string): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
   addChannelMember(channelId: string, userId: string): Promise<void>;
   removeChannelMember(channelId: string, userId: string): Promise<void>;
@@ -141,6 +143,17 @@ function buildTicketActionRow(ticketId: string, isClaimed: boolean): ActionRowBu
       .setLabel(isClaimed ? "Claimed" : "Claim")
       .setStyle(ButtonStyle.Primary)
       .setDisabled(isClaimed),
+    new ButtonBuilder().setCustomId(ComponentIds.closeButton(ticketId)).setLabel("Close").setStyle(ButtonStyle.Danger)
+  );
+}
+
+function buildVerificationReadyRow(ticketId: string, activated = false): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(ComponentIds.activationButton(ticketId))
+      .setLabel(activated ? "Activated" : "Activation")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(activated),
     new ButtonBuilder().setCustomId(ComponentIds.closeButton(ticketId)).setLabel("Close").setStyle(ButtonStyle.Danger)
   );
 }
@@ -435,6 +448,26 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     await channel.send({ content });
   }
 
+  public async sendVerificationReadyPrompt(channelId: string, ticketId: string): Promise<void> {
+    const channel = await this.getTextChannel(channelId);
+    await channel.send({
+      content: "Xác minh thành công. Chọn bước tiếp theo.",
+      components: [buildVerificationReadyRow(ticketId)]
+    });
+  }
+
+  public async markVerificationReadyState(channelId: string, ticketId: string, activatedBy: string): Promise<void> {
+    const target = await this.findVerificationReadyMessage(channelId, ticketId);
+    if (!target) {
+      return;
+    }
+
+    await target.edit({
+      content: `Đã chuyển sang bước activation bởi <@${activatedBy}>.`,
+      components: [buildVerificationReadyRow(ticketId, true)]
+    });
+  }
+
   public async deleteChannel(channelId: string): Promise<void> {
     const channel = await this.getTextChannel(channelId);
     await channel.delete("Ticket closed");
@@ -529,6 +562,17 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
             rowContainsCustomId(row, ComponentIds.claimButton(ticketId)) ||
             rowContainsCustomId(row, ComponentIds.issueSelect(ticketId))
         )
+      ) ?? null
+    );
+  }
+
+  private async findVerificationReadyMessage(channelId: string, ticketId: string): Promise<Message | null> {
+    const channel = await this.getTextChannel(channelId);
+    const messages = await channel.messages.fetch({ limit: 50 });
+
+    return (
+      messages.find((message) =>
+        message.components.some((row) => rowContainsCustomId(row, ComponentIds.activationButton(ticketId)))
       ) ?? null
     );
   }

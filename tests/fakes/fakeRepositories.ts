@@ -212,6 +212,8 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
   public claimUpdates: Array<{ channelId: string; ticketId: string; claimedBy: string }> = [];
   public issueUpdates: Array<{ channelId: string; ticketId: string; issueValue: string; issueLabel: string }> = [];
   public channelMessages: Array<{ channelId: string; content: string }> = [];
+  public verificationPrompts: Array<{ channelId: string; ticketId: string }> = [];
+  public verificationActivations: Array<{ channelId: string; ticketId: string; activatedBy: string }> = [];
   public deletedChannels: string[] = [];
   public movedChannels: Array<{ channelId: string; categoryId: string | null }> = [];
   public requesterPermissions: Array<{ channelId: string; requesterId: string; allowSend: boolean }> = [];
@@ -253,6 +255,14 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
 
   public async sendChannelMessage(channelId: string, content: string): Promise<void> {
     this.channelMessages.push({ channelId, content });
+  }
+
+  public async sendVerificationReadyPrompt(channelId: string, ticketId: string): Promise<void> {
+    this.verificationPrompts.push({ channelId, ticketId });
+  }
+
+  public async markVerificationReadyState(channelId: string, ticketId: string, activatedBy: string): Promise<void> {
+    this.verificationActivations.push({ channelId, ticketId, activatedBy });
   }
 
   public async deleteChannel(channelId: string): Promise<void> {

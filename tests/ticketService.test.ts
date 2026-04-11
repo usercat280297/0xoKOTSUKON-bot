@@ -356,7 +356,43 @@ describe("TicketService", () => {
     });
 
     expect(screenshots.seenUrls).toEqual(["https://example.com/proof.webp"]);
-    expect(gateway.channelMessages.at(-2)?.content).toBe("Đang xác minh ảnh...");
-    expect(gateway.channelMessages.at(-1)?.content).toContain("Ảnh hợp lệ");
+    expect(gateway.channelMessages.at(-1)?.content).toBe("Đang xác minh ảnh...");
+    expect(gateway.verificationPrompts).toEqual([
+      {
+        channelId: "steam-ticket-channel",
+        ticketId: "ticket-steam"
+      }
+    ]);
+  });
+
+  it("lets the requester trigger activation after verification succeeds", async () => {
+    tickets.seedTicket({
+      id: "ticket-steam",
+      guildId: "guild-1",
+      userId: "user-1",
+      channelId: "steam-ticket-channel",
+      optionId: "steam-option-1",
+      status: "open",
+      originalCategoryId: "steam-category",
+      claimedBy: "staff-1",
+      closedBy: null,
+      closedAt: null,
+      transcriptMessageId: null
+    });
+
+    const result = await service.activateByTicketId("ticket-steam", {
+      actorId: "user-1",
+      actorRoleIds: [],
+      hasManageChannels: false
+    });
+
+    expect(result.ok).toBe(true);
+    expect(gateway.verificationActivations).toEqual([
+      {
+        channelId: "steam-ticket-channel",
+        ticketId: "ticket-steam",
+        activatedBy: "user-1"
+      }
+    ]);
   });
 });
