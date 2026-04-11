@@ -13,6 +13,8 @@ import { PanelService } from "../services/panelService";
 import { TicketService } from "../services/ticketService";
 import {
   ComponentIds,
+  parseDonationPanelButtonId,
+  parseDonationTicketButton,
   parsePanelResetId,
   parsePanelSelectId,
   parseTicketButton,
@@ -77,6 +79,43 @@ export async function handleButtonInteraction(
   if (panelId) {
     await interaction.deferUpdate();
     await dependencies.panels.publishPanel(panelId);
+    return;
+  }
+
+  const donationPanelButton = parseDonationPanelButtonId(interaction.customId);
+  if (donationPanelButton) {
+    const member = interaction.member instanceof GuildMember ? interaction.member : null;
+    const result = await dependencies.tickets.createFromSelection({
+      guildId: interaction.guildId!,
+      panelId: donationPanelButton.panelId,
+      optionValue: donationPanelButton.optionValue,
+      userId: interaction.user.id,
+      memberRoleIds: extractRoleIds(member),
+      displayName: extractDisplayName(member, interaction.user.username)
+    });
+
+    await replyEphemeral(interaction, result.message);
+    await dependencies.panels.publishPanel(donationPanelButton.panelId).catch((error) => {
+      console.error(`Failed to auto-refresh donate panel ${donationPanelButton.panelId} after click.`, error);
+    });
+    return;
+  }
+
+  const donationTicketButton = parseDonationTicketButton(interaction.customId);
+  if (donationTicketButton) {
+    const member = interaction.member instanceof GuildMember ? interaction.member : null;
+    const actor = {
+      actorId: interaction.user.id,
+      actorRoleIds: extractRoleIds(member),
+      hasManageChannels: interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) ?? false
+    };
+    const result = await dependencies.tickets.confirmDonationIntentByTicketId(donationTicketButton.ticketId, actor);
+    if (result.ok) {
+      await interaction.deferUpdate();
+      return;
+    }
+
+    await replyEphemeral(interaction, result.message);
     return;
   }
 

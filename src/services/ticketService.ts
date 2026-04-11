@@ -60,6 +60,12 @@ interface SteamWorkflowSnapshot {
   screenshotDueAt: Date | null;
 }
 
+interface DonationWorkflowSnapshot {
+  intentConfirmedAt: Date | null;
+  proofUploadedAt: Date | null;
+  approvedAt: Date | null;
+}
+
 const SCREENSHOT_WINDOW_MS = 20 * 60 * 1000;
 const TOKEN_WINDOW_MS = 30 * 60 * 1000;
 const AUTO_CLOSE_AFTER_ACTIVATION_MS = 60 * 1000;
@@ -94,7 +100,11 @@ export class TicketService {
       };
     }
 
-    if (!this.permissions.hasRequiredRole(input.memberRoleIds, route.option.requiredRoleId)) {
+    const guildConfig = await this.guildConfigs.getByGuildId(input.guildId);
+    const extraAllowedRoleIds =
+      this.isSteamActivationPanel(route.panel) && guildConfig?.donatorRoleId ? [guildConfig.donatorRoleId] : [];
+
+    if (!this.permissions.hasRequiredRole(input.memberRoleIds, route.option.requiredRoleId, extraAllowedRoleIds)) {
       return {
         ok: false,
         message: `Bạn chưa có role hợp lệ để mở ticket này. Hãy vào ${this.gateway.channelMention(route.option.redirectChannelId)} để chọn role rồi quay lại panel.`
@@ -151,6 +161,15 @@ export class TicketService {
       optionLabel: route.option.label
     });
 
+    if (this.isDonationPanel(route.panel)) {
+      await this.gateway.sendDonationPrompt({
+        channelId: channel.channelId,
+        ticketId: ticket.id,
+        donationLinkUrl: guildConfig?.donationLinkUrl ?? null,
+        donationQrImageUrl: guildConfig?.donationQrImageUrl ?? null
+      });
+    }
+
     return {
       ok: true,
       message: `Ticket đã được mở tại ${this.gateway.channelMention(channel.channelId)}.`
@@ -179,6 +198,14 @@ export class TicketService {
     attachment: OutgoingTicketAttachment
   ): Promise<ServiceResponse> {
     return this.sendActivationTokenResolved(() => this.tickets.findByChannelId(channelId), actor, attachment);
+  }
+
+  public confirmDonationIntentByTicketId(ticketId: string, actor: ActorContext): Promise<ServiceResponse> {
+    return this.confirmDonationIntentResolved(() => this.tickets.findById(ticketId), actor);
+  }
+
+  public approveDonationByChannel(channelId: string, actor: ActorContext): Promise<ServiceResponse> {
+    return this.approveDonationResolved(() => this.tickets.findByChannelId(channelId), actor);
   }
 
   public activateByTicketId(ticketId: string, actor: ActorContext): Promise<ServiceResponse> {
@@ -281,7 +308,43 @@ export class TicketService {
     }
 
     const route = await this.resolveTicketRoute(ticket);
-    if (!route || !this.isSteamActivationPanel(route.panel)) {
+    if (!route) {
+      return;
+    }
+
+    if (this.isDonationPanel(route.panel)) {
+      const workflow = await this.getDonationWorkflow(ticket.id);
+      if (workflow.approvedAt) {
+        return;
+      }
+
+      if (!workflow.intentConfirmedAt) {
+        await this.gateway.sendChannelMessage(
+          input.channelId,
+          "Hãy bấm **Tôi đã gửi** trước, rồi gửi ảnh xác nhận donate vào ticket này."
+        );
+        return;
+      }
+
+      await this.tickets.addEvent({
+        ticketId: ticket.id,
+        actorId: input.authorId,
+        eventType: "ticket.donation_proof_uploaded",
+        payload: {
+          attachmentName: imageAttachment.name,
+          attachmentUrl: imageAttachment.url
+        }
+      });
+
+      const staffMention = ticket.claimedBy ? `<@${ticket.claimedBy}>` : `<@&${route.option.staffRoleId}>`;
+      await this.gateway.sendChannelMessage(
+        input.channelId,
+        `${staffMention} member đã gửi ảnh xác nhận donate. Admin có thể dùng /ticket approve-donation để duyệt.`
+      );
+      return;
+    }
+
+    if (!this.isSteamActivationPanel(route.panel)) {
       return;
     }
 
@@ -415,6 +478,11 @@ export class TicketService {
         updated.channelId,
         "Đã nhận ticket. Bạn có 20 phút để gửi 1 ảnh giống mẫu bot đã ghim trong ticket."
       );
+    } else if (this.isDonationPanel(route.panel)) {
+      await this.gateway.sendChannelMessage(
+        updated.channelId,
+        "Đã nhận ticket donate. Khi member bấm **Tôi đã gửi** và up ảnh xác nhận, admin dùng `/ticket approve-donation` để duyệt."
+      );
     }
 
     return { ok: true, message: `Đã claim ticket ${this.gateway.channelMention(updated.channelId)}.` };
@@ -523,6 +591,133 @@ export class TicketService {
     return {
       ok: true,
       message: "Đã chuyển ticket sang bước activation."
+    };
+  }
+
+  private async confirmDonationIntentResolved(
+    resolve: () => Promise<Ticket | null>,
+    actor: ActorContext
+  ): Promise<ServiceResponse> {
+    const ticket = await resolve();
+    if (!ticket) {
+      return { ok: false, message: "Không tìm thấy ticket." };
+    }
+
+    if (ticket.status !== "open") {
+      return { ok: false, message: "Ticket này đã đóng." };
+    }
+
+    const route = await this.resolveTicketRoute(ticket);
+    if (!route || !this.isDonationPanel(route.panel)) {
+      return { ok: false, message: "Nút này chỉ dùng cho ticket donate." };
+    }
+
+    if (actor.actorId !== ticket.userId) {
+      return { ok: false, message: "Chỉ người mở ticket mới được xác nhận donate." };
+    }
+
+    const workflow = await this.getDonationWorkflow(ticket.id);
+    if (workflow.approvedAt) {
+      return { ok: true, message: "Donate này đã được duyệt trước đó." };
+    }
+
+    if (workflow.intentConfirmedAt) {
+      return { ok: true, message: "Mình đã ghi nhận bạn xác nhận donate rồi. Giờ chỉ cần gửi ảnh xác nhận vào ticket." };
+    }
+
+    await this.tickets.addEvent({
+      ticketId: ticket.id,
+      actorId: actor.actorId,
+      eventType: "ticket.donation_intent_confirmed",
+      payload: {}
+    });
+
+    await this.gateway.markDonationIntentState(ticket.channelId, ticket.id);
+    await this.gateway.sendChannelMessage(
+      ticket.channelId,
+      "Đã ghi nhận. Giờ hãy gửi ảnh xác nhận donate vào ticket này để admin duyệt."
+    );
+
+    return {
+      ok: true,
+      message: "Đã ghi nhận bạn xác nhận donate."
+    };
+  }
+
+  private async approveDonationResolved(
+    resolve: () => Promise<Ticket | null>,
+    actor: ActorContext
+  ): Promise<ServiceResponse> {
+    const ticket = await resolve();
+    if (!ticket) {
+      return { ok: false, message: "Không tìm thấy ticket." };
+    }
+
+    if (ticket.status !== "open") {
+      return { ok: false, message: "Ticket này đã đóng." };
+    }
+
+    const route = await this.resolveTicketRoute(ticket);
+    if (!route || !this.isDonationPanel(route.panel)) {
+      return { ok: false, message: "Lệnh này chỉ dùng cho ticket donate." };
+    }
+
+    if (!actor.hasManageChannels) {
+      return { ok: false, message: "Chỉ admin mới được duyệt donate." };
+    }
+
+    const workflow = await this.getDonationWorkflow(ticket.id);
+    if (!workflow.intentConfirmedAt) {
+      return { ok: false, message: "Member chưa bấm xác nhận donate." };
+    }
+
+    if (!workflow.proofUploadedAt) {
+      return { ok: false, message: "Member chưa gửi ảnh xác nhận donate." };
+    }
+
+    if (workflow.approvedAt) {
+      return { ok: true, message: "Donate này đã được duyệt trước đó." };
+    }
+
+    const guildConfig = await this.guildConfigs.getByGuildId(ticket.guildId);
+    if (!guildConfig?.donatorRoleId) {
+      return { ok: false, message: "Guild chưa cấu hình DONATOR role. Dùng /config set-donator-role trước." };
+    }
+
+    if (!guildConfig.donationThanksChannelId) {
+      return {
+        ok: false,
+        message: "Guild chưa cấu hình kênh cảm ơn donate. Dùng /config set-donation-thanks-channel trước."
+      };
+    }
+
+    await this.gateway.addGuildMemberRole(ticket.guildId, ticket.userId, guildConfig.donatorRoleId);
+    const thanksMessageId = await this.gateway.sendDonationThanks({
+      guildId: ticket.guildId,
+      thanksChannelId: guildConfig.donationThanksChannelId,
+      userId: ticket.userId
+    });
+
+    await this.tickets.addEvent({
+      ticketId: ticket.id,
+      actorId: actor.actorId,
+      eventType: "ticket.donation_approved",
+      payload: {
+        thanksChannelId: guildConfig.donationThanksChannelId,
+        thanksMessageId,
+        grantedRoleId: guildConfig.donatorRoleId
+      }
+    });
+
+    await this.gateway.markDonationApprovedState(ticket.channelId, ticket.id, actor.actorId);
+    await this.gateway.sendChannelMessage(
+      ticket.channelId,
+      `Đã xác nhận donate cho <@${ticket.userId}> và cấp role <@&${guildConfig.donatorRoleId}>.`
+    );
+
+    return {
+      ok: true,
+      message: `Đã duyệt donate cho <@${ticket.userId}>.`
     };
   }
 
@@ -747,6 +942,10 @@ export class TicketService {
     return panel.template === "game-activation" && panel.name.trim().toUpperCase().includes("STEAM ACTIVATION");
   }
 
+  private isDonationPanel(panel: TicketPanelWithOptions): boolean {
+    return panel.template === "donation";
+  }
+
   private async getSteamWorkflow(ticketId: string): Promise<SteamWorkflowSnapshot> {
     const events = await this.tickets.listEvents(ticketId);
     let claimedAt: Date | null = null;
@@ -793,6 +992,37 @@ export class TicketService {
       downloadConfirmedAt,
       autoCloseAt: downloadConfirmedAt ? new Date(downloadConfirmedAt.getTime() + AUTO_CLOSE_AFTER_ACTIVATION_MS) : null,
       screenshotDueAt: claimedAt ? new Date(claimedAt.getTime() + SCREENSHOT_WINDOW_MS) : null
+    };
+  }
+
+  private async getDonationWorkflow(ticketId: string): Promise<DonationWorkflowSnapshot> {
+    const events = await this.tickets.listEvents(ticketId);
+    let intentConfirmedAt: Date | null = null;
+    let proofUploadedAt: Date | null = null;
+    let approvedAt: Date | null = null;
+
+    for (const event of events) {
+      const createdAt = event.createdAt ?? new Date();
+
+      switch (event.eventType) {
+        case "ticket.donation_intent_confirmed":
+          intentConfirmedAt = createdAt;
+          break;
+        case "ticket.donation_proof_uploaded":
+          proofUploadedAt = createdAt;
+          break;
+        case "ticket.donation_approved":
+          approvedAt = createdAt;
+          break;
+        default:
+          break;
+      }
+    }
+
+    return {
+      intentConfirmedAt,
+      proofUploadedAt,
+      approvedAt
     };
   }
 

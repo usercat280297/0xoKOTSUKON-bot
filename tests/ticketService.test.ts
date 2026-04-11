@@ -92,6 +92,38 @@ function makeSteamPanel(): TicketPanelWithOptions {
   };
 }
 
+function makeDonationPanel(): TicketPanelWithOptions {
+  return {
+    id: "panel-donation",
+    guildId: "guild-1",
+    name: "DONATE",
+    channelId: "donate-panel-channel",
+    messageId: null,
+    messageIds: [],
+    placeholder: "Open a donation ticket",
+    template: "donation",
+    active: true,
+    options: [
+      {
+        id: "donation-option-1",
+        panelId: "panel-donation",
+        value: "donate",
+        label: "Donate",
+        emoji: null,
+        boardSection: null,
+        stockRemaining: null,
+        stockTotal: null,
+        sortOrder: 1,
+        requiredRoleId: "verified-role",
+        redirectChannelId: "role-channel",
+        targetCategoryId: "donate-category",
+        staffRoleId: "donation-staff",
+        active: true
+      }
+    ]
+  };
+}
+
 describe("TicketService", () => {
   let guildConfigs: FakeGuildConfigRepository;
   let panels: FakePanelRepository;
@@ -108,6 +140,7 @@ describe("TicketService", () => {
     screenshots = new FakeSteamActivationScreenshotAnalyzer();
     panels.seedPanel(makePanel());
     panels.seedPanel(makeSteamPanel());
+    panels.seedPanel(makeDonationPanel());
 
     service = new TicketService(
       guildConfigs,
@@ -261,7 +294,11 @@ describe("TicketService", () => {
     guildConfigs.current = {
       guildId: "guild-1",
       logChannelId: "log-channel",
-      closedCategoryId: "closed-category"
+      closedCategoryId: "closed-category",
+      donatorRoleId: null,
+      donationThanksChannelId: null,
+      donationLinkUrl: null,
+      donationQrImageUrl: null
     };
     gateway.transcriptMessages = [
       {
@@ -361,6 +398,146 @@ describe("TicketService", () => {
       {
         channelId: "steam-ticket-channel",
         ticketId: "ticket-steam"
+      }
+    ]);
+  });
+
+  it("allows DONATOR members to open steam activation tickets", async () => {
+    guildConfigs.current = {
+      guildId: "guild-1",
+      logChannelId: null,
+      closedCategoryId: null,
+      donatorRoleId: "donator-role",
+      donationThanksChannelId: null,
+      donationLinkUrl: null,
+      donationQrImageUrl: null
+    };
+
+    const result = await service.createFromSelection({
+      guildId: "guild-1",
+      panelId: "panel-steam",
+      optionValue: "resident-evil-requiem",
+      userId: "user-9",
+      memberRoleIds: ["donator-role"],
+      displayName: "Bob"
+    });
+
+    expect(result.ok).toBe(true);
+    expect(gateway.createdChannels[0]).toMatchObject({
+      targetCategoryId: "steam-category",
+      staffRoleId: "steam-staff"
+    });
+  });
+
+  it("creates a donation ticket and sends the donate prompt", async () => {
+    guildConfigs.current = {
+      guildId: "guild-1",
+      logChannelId: null,
+      closedCategoryId: null,
+      donatorRoleId: "donator-role",
+      donationThanksChannelId: "thanks-channel",
+      donationLinkUrl: "https://buymeacoffee.com/example",
+      donationQrImageUrl: "https://cdn.example.com/qr.png"
+    };
+
+    const result = await service.createFromSelection({
+      guildId: "guild-1",
+      panelId: "panel-donation",
+      optionValue: "donate",
+      userId: "user-1",
+      memberRoleIds: ["verified-role"],
+      displayName: "Alice"
+    });
+
+    expect(result.ok).toBe(true);
+    expect(gateway.donationPrompts).toEqual([
+      {
+        channelId: "channel-1",
+        ticketId: expect.any(String),
+        donationLinkUrl: "https://buymeacoffee.com/example",
+        donationQrImageUrl: "https://cdn.example.com/qr.png"
+      }
+    ]);
+  });
+
+  it("records donation proof and lets admin approve it", async () => {
+    guildConfigs.current = {
+      guildId: "guild-1",
+      logChannelId: null,
+      closedCategoryId: null,
+      donatorRoleId: "donator-role",
+      donationThanksChannelId: "thanks-channel",
+      donationLinkUrl: "https://buymeacoffee.com/example",
+      donationQrImageUrl: null
+    };
+    tickets.seedTicket({
+      id: "ticket-donation",
+      guildId: "guild-1",
+      userId: "user-1",
+      channelId: "donation-ticket-channel",
+      optionId: "donation-option-1",
+      status: "open",
+      originalCategoryId: "donate-category",
+      claimedBy: null,
+      closedBy: null,
+      closedAt: null,
+      transcriptMessageId: null
+    });
+
+    const confirmResult = await service.confirmDonationIntentByTicketId("ticket-donation", {
+      actorId: "user-1",
+      actorRoleIds: [],
+      hasManageChannels: false
+    });
+
+    expect(confirmResult.ok).toBe(true);
+    expect(gateway.donationIntentUpdates).toEqual([
+      {
+        channelId: "donation-ticket-channel",
+        ticketId: "ticket-donation"
+      }
+    ]);
+
+    await service.handleIncomingTicketMessage({
+      channelId: "donation-ticket-channel",
+      authorId: "user-1",
+      attachments: [
+        {
+          name: "proof.png",
+          url: "https://example.com/donate-proof.png",
+          contentType: "image/png"
+        }
+      ]
+    });
+
+    expect(gateway.channelMessages.at(-1)?.content).toContain("<@&donation-staff>");
+
+    const approveResult = await service.approveDonationByChannel("donation-ticket-channel", {
+      actorId: "admin-1",
+      actorRoleIds: [],
+      hasManageChannels: true
+    });
+
+    expect(approveResult.ok).toBe(true);
+    expect(gateway.grantedRoles).toEqual([
+      {
+        guildId: "guild-1",
+        userId: "user-1",
+        roleId: "donator-role"
+      }
+    ]);
+    expect(gateway.donationThanksMessages).toEqual([
+      {
+        guildId: "guild-1",
+        thanksChannelId: "thanks-channel",
+        userId: "user-1"
+      }
+    ]);
+    expect(gateway.donationApprovalUpdates).toEqual([
+      {
+        channelId: "donation-ticket-channel",
+        ticketId: "ticket-donation",
+        approvedBy: "admin-1"
       }
     ]);
   });

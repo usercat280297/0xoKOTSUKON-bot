@@ -16,6 +16,8 @@ import type {
   DiscordTicketGateway,
   CreateTicketChannelParams,
   CreateTicketChannelResult,
+  SendDonationPromptParams,
+  SendDonationThanksParams,
   SendActivationTokenPanelParams,
   SendLogParams,
   SendTicketIntroParams
@@ -32,12 +34,23 @@ export class FakeGuildConfigRepository implements GuildConfigRepository {
 
   public async upsert(
     guildId: string,
-    patch: { logChannelId?: string | null; closedCategoryId?: string | null }
+    patch: {
+      logChannelId?: string | null;
+      closedCategoryId?: string | null;
+      donatorRoleId?: string | null;
+      donationThanksChannelId?: string | null;
+      donationLinkUrl?: string | null;
+      donationQrImageUrl?: string | null;
+    }
   ): Promise<GuildConfig> {
     this.current = {
       guildId,
       logChannelId: patch.logChannelId ?? this.current?.logChannelId ?? null,
-      closedCategoryId: patch.closedCategoryId ?? this.current?.closedCategoryId ?? null
+      closedCategoryId: patch.closedCategoryId ?? this.current?.closedCategoryId ?? null,
+      donatorRoleId: patch.donatorRoleId ?? this.current?.donatorRoleId ?? null,
+      donationThanksChannelId: patch.donationThanksChannelId ?? this.current?.donationThanksChannelId ?? null,
+      donationLinkUrl: patch.donationLinkUrl ?? this.current?.donationLinkUrl ?? null,
+      donationQrImageUrl: patch.donationQrImageUrl ?? this.current?.donationQrImageUrl ?? null
     };
     return this.current;
   }
@@ -230,6 +243,11 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
   public claimUpdates: Array<{ channelId: string; ticketId: string; claimedBy: string }> = [];
   public issueUpdates: Array<{ channelId: string; ticketId: string; issueValue: string; issueLabel: string }> = [];
   public channelMessages: Array<{ channelId: string; content: string }> = [];
+  public donationPrompts: SendDonationPromptParams[] = [];
+  public donationIntentUpdates: Array<{ channelId: string; ticketId: string }> = [];
+  public donationApprovalUpdates: Array<{ channelId: string; ticketId: string; approvedBy: string }> = [];
+  public donationThanksMessages: SendDonationThanksParams[] = [];
+  public grantedRoles: Array<{ guildId: string; userId: string; roleId: string }> = [];
   public verificationPrompts: Array<{ channelId: string; ticketId: string }> = [];
   public verificationActivations: Array<{ channelId: string; ticketId: string; activatedBy: string }> = [];
   public activationTokenPanels: SendActivationTokenPanelParams[] = [];
@@ -277,6 +295,27 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
     this.channelMessages.push({ channelId, content });
   }
 
+  public async sendDonationPrompt(params: SendDonationPromptParams): Promise<void> {
+    this.donationPrompts.push(params);
+  }
+
+  public async markDonationIntentState(channelId: string, ticketId: string): Promise<void> {
+    this.donationIntentUpdates.push({ channelId, ticketId });
+  }
+
+  public async markDonationApprovedState(channelId: string, ticketId: string, approvedBy: string): Promise<void> {
+    this.donationApprovalUpdates.push({ channelId, ticketId, approvedBy });
+  }
+
+  public async sendDonationThanks(params: SendDonationThanksParams): Promise<string> {
+    this.donationThanksMessages.push(params);
+    return `thanks-${this.donationThanksMessages.length}`;
+  }
+
+  public async addGuildMemberRole(guildId: string, userId: string, roleId: string): Promise<void> {
+    this.grantedRoles.push({ guildId, userId, roleId });
+  }
+
   public async sendVerificationReadyPrompt(channelId: string, ticketId: string): Promise<void> {
     this.verificationPrompts.push({ channelId, ticketId });
   }
@@ -318,7 +357,7 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
     this.removedMembers.push({ channelId, userId });
   }
 
-  public async fetchTranscriptMessages(): Promise<TranscriptMessage[]> {
+  public async fetchTranscriptMessages(_channelId: string): Promise<TranscriptMessage[]> {
     return this.transcriptMessages;
   }
 

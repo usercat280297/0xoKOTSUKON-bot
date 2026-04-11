@@ -44,7 +44,7 @@ async function handlePanelCommand(interaction: ChatInputCommandInteraction, pane
         const name = interaction.options.getString("name", true);
         const channel = interaction.options.getChannel("channel", true);
         const placeholder = interaction.options.getString("placeholder", true);
-        const template = interaction.options.getString("template") as "default" | "game-activation" | null;
+        const template = interaction.options.getString("template") as "default" | "game-activation" | "donation" | null;
         if (channel.type !== ChannelType.GuildText) {
           throw new Error("Panel channel must be a text channel.");
         }
@@ -185,6 +185,57 @@ async function handleConfigCommand(
       await replyEphemeral(interaction, `Log channel set to <#${channel.id}>.`);
       return;
     }
+    case "set-donator-role": {
+      const role = interaction.options.getRole("role", true);
+      await guildConfigs.upsert(guildId, {
+        donatorRoleId: role.id
+      });
+      await replyEphemeral(interaction, `DONATOR role set to <@&${role.id}>.`);
+      return;
+    }
+    case "set-donation-thanks-channel": {
+      const channel = interaction.options.getChannel("channel", true);
+      if (channel.type !== ChannelType.GuildText) {
+        await replyEphemeral(interaction, "Thank-you channel must be a text channel.");
+        return;
+      }
+
+      await guildConfigs.upsert(guildId, {
+        donationThanksChannelId: channel.id
+      });
+      await replyEphemeral(interaction, `Donation thank-you channel set to <#${channel.id}>.`);
+      return;
+    }
+    case "set-donation-link": {
+      const url = interaction.options.getString("url", true).trim();
+      try {
+        new URL(url);
+      } catch {
+        await replyEphemeral(interaction, "Donation link must be a valid URL.");
+        return;
+      }
+
+      await guildConfigs.upsert(guildId, {
+        donationLinkUrl: url
+      });
+      await replyEphemeral(interaction, "Donation link updated.");
+      return;
+    }
+    case "set-donation-qr": {
+      const url = interaction.options.getString("url", true).trim();
+      try {
+        new URL(url);
+      } catch {
+        await replyEphemeral(interaction, "Donation QR must be a valid URL.");
+        return;
+      }
+
+      await guildConfigs.upsert(guildId, {
+        donationQrImageUrl: url
+      });
+      await replyEphemeral(interaction, "Donation QR image URL updated.");
+      return;
+    }
     default:
       await replyEphemeral(interaction, "Unsupported config subcommand.");
   }
@@ -224,6 +275,14 @@ async function handleTicketCommand(interaction: ChatInputCommandInteraction, tic
         url: file?.url ?? null,
         linkUrl: link ?? null
       });
+      await replyEphemeral(interaction, result.message);
+      return;
+    }
+    case "approve-donation": {
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.deferReply({ ephemeral: true });
+      }
+      const result = await tickets.approveDonationByChannel(interaction.channelId, actor);
       await replyEphemeral(interaction, result.message);
       return;
     }

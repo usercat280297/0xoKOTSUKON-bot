@@ -2,9 +2,25 @@ CREATE TABLE IF NOT EXISTS guild_configs (
   guild_id TEXT PRIMARY KEY,
   log_channel_id TEXT NULL,
   closed_category_id TEXT NULL,
+  donator_role_id TEXT NULL,
+  donation_thanks_channel_id TEXT NULL,
+  donation_link_url TEXT NULL,
+  donation_qr_image_url TEXT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE guild_configs
+  ADD COLUMN IF NOT EXISTS donator_role_id TEXT NULL;
+
+ALTER TABLE guild_configs
+  ADD COLUMN IF NOT EXISTS donation_thanks_channel_id TEXT NULL;
+
+ALTER TABLE guild_configs
+  ADD COLUMN IF NOT EXISTS donation_link_url TEXT NULL;
+
+ALTER TABLE guild_configs
+  ADD COLUMN IF NOT EXISTS donation_qr_image_url TEXT NULL;
 
 CREATE TABLE IF NOT EXISTS ticket_panels (
   id TEXT PRIMARY KEY,

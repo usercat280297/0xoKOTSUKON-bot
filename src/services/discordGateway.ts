@@ -6,6 +6,7 @@ import {
   ChannelType,
   Client,
   EmbedBuilder,
+  GuildMember,
   Message,
   PermissionFlagsBits,
   StringSelectMenuBuilder,
@@ -13,7 +14,7 @@ import {
 } from "discord.js";
 import { join } from "node:path";
 import { ticketIssueCatalog } from "../config/ticketIssueCatalog";
-import type { PanelTemplate, TicketOption, TicketPanelWithOptions, TranscriptMessage } from "../domain/types";
+import type { GuildConfig, PanelTemplate, TicketOption, TicketPanelWithOptions, TranscriptMessage } from "../domain/types";
 import type { BusinessHoursService } from "./businessHoursService";
 import { ComponentIds } from "../utils/componentIds";
 import { slugifyTicketName } from "../utils/formatters";
@@ -56,6 +57,19 @@ export interface SendActivationTokenPanelParams {
   tokenExpiresAt: Date;
 }
 
+export interface SendDonationPromptParams {
+  channelId: string;
+  ticketId: string;
+  donationLinkUrl?: string | null;
+  donationQrImageUrl?: string | null;
+}
+
+export interface SendDonationThanksParams {
+  guildId: string;
+  thanksChannelId: string;
+  userId: string;
+}
+
 export interface DiscordTicketGateway {
   sendPanelMessage(panel: TicketPanelWithOptions): Promise<string[]>;
   createTicketChannel(params: CreateTicketChannelParams): Promise<CreateTicketChannelResult>;
@@ -63,6 +77,11 @@ export interface DiscordTicketGateway {
   updateTicketClaimState(channelId: string, ticketId: string, claimedBy: string): Promise<void>;
   updateTicketIssueState(channelId: string, ticketId: string, issueValue: string, issueLabel: string): Promise<void>;
   sendChannelMessage(channelId: string, content: string): Promise<void>;
+  sendDonationPrompt(params: SendDonationPromptParams): Promise<void>;
+  markDonationIntentState(channelId: string, ticketId: string): Promise<void>;
+  markDonationApprovedState(channelId: string, ticketId: string, approvedBy: string): Promise<void>;
+  sendDonationThanks(params: SendDonationThanksParams): Promise<string>;
+  addGuildMemberRole(guildId: string, userId: string, roleId: string): Promise<void>;
   sendVerificationReadyPrompt(channelId: string, ticketId: string): Promise<void>;
   markVerificationReadyState(channelId: string, ticketId: string, activatedBy: string): Promise<void>;
   sendActivationTokenPanel(params: SendActivationTokenPanelParams): Promise<void>;
@@ -96,6 +115,7 @@ const STEAM_ACTIVATION_DOWNLOAD_GUIDE_CHANNEL_ID = "1492126197604155487";
 const STEAM_ACTIVATION_SHARE_REVIEW_CHANNEL_ID = "1492126875781431336";
 const STEAM_ACTIVATION_SUPPORT_CHANNEL_ID = "1492119938788229180";
 const STEAM_ACTIVATION_CHANNEL_ARROW = "<a:outputonlinegiftools:1492551407822176306>";
+const DONATION_THANKS_EMOJI = "<a:giphy:1492567045592846526>";
 const QUICK_DETAIL_FALLBACK = "Not selected yet";
 const MAX_SELECTS_PER_MESSAGE = 2;
 const MAX_OPTIONS_PER_SELECT = 25;
@@ -132,6 +152,20 @@ function buildSteamActivationTicketControlContent(
   ].join("\n");
 }
 
+function buildDonationTicketControlContent(
+  requesterId: string,
+  optionLabel: string,
+  claimedBy?: string
+): string {
+  return [
+    `**${optionLabel}**`,
+    `Người mở: <@${requesterId}>`,
+    claimedBy ? `Staff: <@${claimedBy}>` : "Staff: đang chờ nhận ticket",
+    "",
+    "Sau khi chuyển khoản xong, bấm **Tôi đã gửi** ở panel bên dưới rồi up ảnh xác nhận donate."
+  ].join("\n");
+}
+
 function buildTicketIssueRow(ticketId: string, selectedIssueValue?: string): ActionRowBuilder<StringSelectMenuBuilder> {
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
@@ -157,6 +191,27 @@ function buildTicketActionRow(ticketId: string, isClaimed: boolean): ActionRowBu
       .setDisabled(isClaimed),
     new ButtonBuilder().setCustomId(ComponentIds.closeButton(ticketId)).setLabel("Đóng").setStyle(ButtonStyle.Danger)
   );
+}
+
+function buildDonationActionRow(
+  ticketId: string,
+  options?: { confirmed?: boolean; approved?: boolean; linkUrl?: string | null }
+): ActionRowBuilder<ButtonBuilder> {
+  const confirmed = options?.confirmed ?? false;
+  const approved = options?.approved ?? false;
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(ComponentIds.donationConfirmButton(ticketId))
+      .setLabel(approved ? "Đã duyệt donate" : confirmed ? "Chờ duyệt" : "Tôi đã gửi")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(confirmed || approved)
+  );
+
+  if (options?.linkUrl) {
+    row.addComponents(new ButtonBuilder().setLabel("Mở link donate").setStyle(ButtonStyle.Link).setURL(options.linkUrl));
+  }
+
+  return row;
 }
 
 function buildVerificationReadyRow(ticketId: string, activated = false): ActionRowBuilder<ButtonBuilder> {
@@ -207,6 +262,58 @@ function buildVerificationReadyEmbed(activated = false): EmbedBuilder {
         ? "Vui lòng đợi 1 chút nhé, admin sẽ vào kích hoạt cho bạn."
         : "Ảnh đã đúng mẫu. Bấm **Kích hoạt** để chuyển sang bước tiếp theo."
     );
+}
+
+function buildDonationPromptEmbed(options: {
+  donationLinkUrl?: string | null;
+  donationQrImageUrl?: string | null;
+  confirmed?: boolean;
+  approved?: boolean;
+}): EmbedBuilder {
+  const confirmed = options.confirmed ?? false;
+  const approved = options.approved ?? false;
+  const description = approved
+    ? "Donate đã được xác nhận. Cảm ơn bạn đã ủng hộ server."
+    : confirmed
+      ? "Bot đã ghi nhận bạn bấm xác nhận. Bây giờ hãy gửi ảnh xác nhận donate để admin duyệt."
+      : [
+          "Nếu muốn ủng hộ server, bạn có thể donate theo QR hoặc link bên dưới.",
+          options.donationLinkUrl ? "Sau khi chuyển khoản xong, bấm **Tôi đã gửi** rồi up ảnh xác nhận vào ticket này." : "Admin chưa cấu hình link donate.",
+          options.donationQrImageUrl ? "Nếu có QR, bot đã hiển thị ngay bên dưới." : "Admin chưa cấu hình ảnh QR donate."
+        ].join("\n");
+
+  const embed = new EmbedBuilder()
+    .setColor(approved ? 0x22c55e : confirmed ? 0xf59e0b : 0x5865f2)
+    .setTitle(approved ? "Donate đã được duyệt" : confirmed ? "Đang chờ admin duyệt" : "Ủng hộ server")
+    .setDescription(description);
+
+  if (options.donationQrImageUrl) {
+    embed.setImage(options.donationQrImageUrl);
+  }
+
+  return embed;
+}
+
+function buildDonationBoardEmbed(panelName: string): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0x22c55e)
+    .setTitle(panelName)
+    .setDescription(
+      [
+        "Nếu muốn ủng hộ server, bấm nút bên dưới để mở ticket donate riêng.",
+        "",
+        "Trong ticket đó, bot sẽ gửi QR hoặc link donate để bạn chuyển khoản."
+      ].join("\n")
+    );
+}
+
+function buildDonationBoardRow(panelId: string, optionValue: string): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(ComponentIds.donationPanelOpen(panelId, optionValue))
+      .setLabel("Donate")
+      .setStyle(ButtonStyle.Success)
+  );
 }
 
 function buildActivationTokenEmbed(options: {
@@ -362,6 +469,10 @@ function isSteamActivationTicket(panelName: string, panelTemplate: PanelTemplate
   return panelTemplate === "game-activation" && panelName.trim().toUpperCase().includes("STEAM ACTIVATION");
 }
 
+function isDonationTicket(panelTemplate: PanelTemplate): boolean {
+  return panelTemplate === "donation";
+}
+
 function buildSteamActivationTicketEmbed(): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(0x8b5cf6)
@@ -477,6 +588,7 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     const embeds: EmbedBuilder[] = [];
     const files: AttachmentBuilder[] = [];
     const isSteamActivation = isSteamActivationTicket(params.panelName, params.panelTemplate);
+    const isDonation = isDonationTicket(params.panelTemplate);
 
     if (isSteamActivation) {
       embeds.push(buildSteamActivationTicketEmbed());
@@ -490,11 +602,15 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     const message = await channel.send({
       content: isSteamActivation
         ? buildSteamActivationTicketControlContent(params.requesterId, params.optionLabel)
-        : buildDefaultTicketControlContent(params.requesterId, params.panelName, params.optionLabel),
+        : isDonation
+          ? buildDonationTicketControlContent(params.requesterId, params.optionLabel)
+          : buildDefaultTicketControlContent(params.requesterId, params.panelName, params.optionLabel),
       embeds,
       files,
       components: isSteamActivation
         ? [buildTicketActionRow(params.ticketId, false)]
+        : isDonation
+          ? [buildTicketActionRow(params.ticketId, false)]
         : [buildTicketIssueRow(params.ticketId), buildTicketActionRow(params.ticketId, false)]
     });
 
@@ -547,6 +663,94 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
   public async sendChannelMessage(channelId: string, content: string): Promise<void> {
     const channel = await this.getTextChannel(channelId);
     await channel.send({ content });
+  }
+
+  public async sendDonationPrompt(params: SendDonationPromptParams): Promise<void> {
+    const channel = await this.getTextChannel(params.channelId);
+    await channel.send({
+      embeds: [
+        buildDonationPromptEmbed({
+          donationLinkUrl: params.donationLinkUrl,
+          donationQrImageUrl: params.donationQrImageUrl
+        })
+      ],
+      components: [
+        buildDonationActionRow(params.ticketId, {
+          linkUrl: params.donationLinkUrl
+        })
+      ]
+    });
+  }
+
+  public async markDonationIntentState(channelId: string, ticketId: string): Promise<void> {
+    const target = await this.findDonationPromptMessage(channelId, ticketId);
+    if (!target) {
+      return;
+    }
+
+    const linkUrl = this.readLinkButtonUrl(target);
+    const imageUrl = target.embeds[0]?.image?.url ?? null;
+
+    await target.edit({
+      embeds: [
+        buildDonationPromptEmbed({
+          donationLinkUrl: linkUrl,
+          donationQrImageUrl: imageUrl,
+          confirmed: true
+        })
+      ],
+      components: [buildDonationActionRow(ticketId, { confirmed: true, linkUrl })]
+    });
+  }
+
+  public async markDonationApprovedState(channelId: string, ticketId: string, approvedBy: string): Promise<void> {
+    const target = await this.findDonationPromptMessage(channelId, ticketId);
+    if (!target) {
+      return;
+    }
+
+    const linkUrl = this.readLinkButtonUrl(target);
+    const imageUrl = target.embeds[0]?.image?.url ?? null;
+
+    await target.edit({
+      embeds: [
+        buildDonationPromptEmbed({
+          donationLinkUrl: linkUrl,
+          donationQrImageUrl: imageUrl,
+          confirmed: true,
+          approved: true
+        }).setFooter({ text: `Đã duyệt bởi ${approvedBy}` })
+      ],
+      components: [buildDonationActionRow(ticketId, { confirmed: true, approved: true, linkUrl })]
+    });
+  }
+
+  public async sendDonationThanks(params: SendDonationThanksParams): Promise<string> {
+    const channel = await this.getTextChannel(params.thanksChannelId);
+    const guild = await this.client.guilds.fetch(params.guildId);
+    const member = await guild.members.fetch(params.userId).catch(() => null);
+    const user = member?.user ?? (await this.client.users.fetch(params.userId).catch(() => null));
+    const displayName = member?.displayName ?? user?.username ?? "Donator";
+    const avatarUrl = member?.displayAvatarURL() ?? user?.displayAvatarURL() ?? null;
+
+    const embed = new EmbedBuilder()
+      .setColor(0xf59e0b)
+      .setTitle(`Cảm ơn ${displayName} ${DONATION_THANKS_EMOJI}`)
+      .setDescription("Cảm ơn bạn đã ủng hộ server. Sự ủng hộ của bạn giúp server duy trì và cập nhật tốt hơn.")
+      .setThumbnail(avatarUrl);
+
+    const message = await channel.send({
+      content: `<@${params.userId}>`,
+      embeds: [embed]
+    });
+
+    return message.id;
+  }
+
+  public async addGuildMemberRole(guildId: string, userId: string, roleId: string): Promise<void> {
+    const guild = await this.client.guilds.fetch(guildId);
+    const member = await guild.members.fetch(userId);
+    await member.roles.add(roleId, "Donation approved");
   }
 
   public async sendVerificationReadyPrompt(channelId: string, ticketId: string): Promise<void> {
@@ -752,6 +956,17 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     );
   }
 
+  private async findDonationPromptMessage(channelId: string, ticketId: string): Promise<Message | null> {
+    const channel = await this.getTextChannel(channelId);
+    const messages = await channel.messages.fetch({ limit: 50 });
+
+    return (
+      messages.find((message) =>
+        message.components.some((row) => rowContainsCustomId(row, ComponentIds.donationConfirmButton(ticketId)))
+      ) ?? null
+    );
+  }
+
   private readLinkButtonUrl(message: Message): string | null {
     for (const row of message.components) {
       if (!("components" in row) || !Array.isArray(row.components)) {
@@ -779,6 +994,16 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     const activeOptions = panel.options.filter((option) => option.active);
     if (activeOptions.length === 0) {
       throw new Error("Panel has no active options.");
+    }
+
+    if (panel.template === "donation") {
+      const option = activeOptions[0];
+      return [
+        {
+          embeds: [buildDonationBoardEmbed(panel.name)],
+          components: [buildDonationBoardRow(panel.id, option.value)]
+        }
+      ];
     }
 
     if (panel.template !== "game-activation") {

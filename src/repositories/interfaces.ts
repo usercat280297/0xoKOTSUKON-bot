@@ -15,7 +15,14 @@ export interface GuildConfigRepository {
   getByGuildId(guildId: string): Promise<GuildConfig | null>;
   upsert(
     guildId: string,
-    patch: { logChannelId?: string | null; closedCategoryId?: string | null }
+    patch: {
+      logChannelId?: string | null;
+      closedCategoryId?: string | null;
+      donatorRoleId?: string | null;
+      donationThanksChannelId?: string | null;
+      donationLinkUrl?: string | null;
+      donationQrImageUrl?: string | null;
+    }
   ): Promise<GuildConfig>;
 }
 

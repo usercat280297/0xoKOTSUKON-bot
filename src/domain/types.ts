@@ -1,10 +1,14 @@
 export type TicketStatus = "open" | "closed";
-export type PanelTemplate = "default" | "game-activation";
+export type PanelTemplate = "default" | "game-activation" | "donation";
 
 export interface GuildConfig {
   guildId: string;
   logChannelId: string | null;
   closedCategoryId: string | null;
+  donatorRoleId: string | null;
+  donationThanksChannelId: string | null;
+  donationLinkUrl: string | null;
+  donationQrImageUrl: string | null;
 }
 
 export interface TicketPanel {

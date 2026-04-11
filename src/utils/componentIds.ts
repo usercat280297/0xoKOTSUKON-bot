@@ -1,10 +1,12 @@
 export const ComponentIds = {
   panelSelect: (panelId: string, scope?: string) => `ticket-panel:${panelId}${scope ? `:${scope}` : ""}`,
   panelReset: (panelId: string) => `ticket-panel-reset:${panelId}`,
+  donationPanelOpen: (panelId: string, optionValue: string) => `ticket-donation-panel:${panelId}:${optionValue}`,
   issueSelect: (ticketId: string) => `ticket-issue:${ticketId}`,
   claimButton: (ticketId: string) => `ticket:claim:${ticketId}`,
   activationButton: (ticketId: string) => `ticket:activate:${ticketId}`,
   closeButton: (ticketId: string) => `ticket:close:${ticketId}`,
+  donationConfirmButton: (ticketId: string) => `ticket-donation:confirm:${ticketId}`,
   tokenActivatedButton: (ticketId: string) => `ticket-token:activated:${ticketId}`,
   tokenSupportButton: (ticketId: string) => `ticket-token:support:${ticketId}`,
   tokenSupportModal: (ticketId: string) => `ticket-token-support:${ticketId}`
@@ -26,6 +28,30 @@ export function parseTicketButton(customId: string): { action: "claim" | "close"
   }
 
   if (action !== "claim" && action !== "close" && action !== "activate") {
+    return null;
+  }
+
+  return { action, ticketId };
+}
+
+export function parseDonationPanelButtonId(customId: string): { panelId: string; optionValue: string } | null {
+  const [namespace, panelId, optionValue] = customId.split(":");
+  if (namespace !== "ticket-donation-panel" || !panelId || !optionValue) {
+    return null;
+  }
+
+  return { panelId, optionValue };
+}
+
+export function parseDonationTicketButton(
+  customId: string
+): { action: "confirm"; ticketId: string } | null {
+  const [namespace, action, ticketId] = customId.split(":");
+  if (namespace !== "ticket-donation" || !ticketId) {
+    return null;
+  }
+
+  if (action !== "confirm") {
     return null;
   }
 

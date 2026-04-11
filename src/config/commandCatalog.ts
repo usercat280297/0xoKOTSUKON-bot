@@ -21,7 +21,8 @@ const panelCommand = new SlashCommandBuilder()
           .setDescription("Visual template for this panel")
           .addChoices(
             { name: "Default", value: "default" },
-            { name: "Game Activation", value: "game-activation" }
+            { name: "Game Activation", value: "game-activation" },
+            { name: "Donation", value: "donation" }
           )
       )
   )
@@ -117,6 +118,32 @@ const configCommand = new SlashCommandBuilder()
       .addChannelOption((option) =>
         option.setName("channel").setDescription("Log text channel").addChannelTypes(ChannelType.GuildText).setRequired(true)
       )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("set-donator-role")
+      .setDescription("Set the DONATOR role that is granted after donation approval")
+      .addRoleOption((option) => option.setName("role").setDescription("Donator role").setRequired(true))
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("set-donation-thanks-channel")
+      .setDescription("Set the channel where approved donators are thanked")
+      .addChannelOption((option) =>
+        option.setName("channel").setDescription("Thank-you text channel").addChannelTypes(ChannelType.GuildText).setRequired(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("set-donation-link")
+      .setDescription("Set the Coffee/link destination shown in donation tickets")
+      .addStringOption((option) => option.setName("url").setDescription("Donation URL").setRequired(true))
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("set-donation-qr")
+      .setDescription("Set the QR image URL shown in donation tickets")
+      .addStringOption((option) => option.setName("url").setDescription("Public QR image URL").setRequired(true))
   );
 
 const ticketCommand = new SlashCommandBuilder()
@@ -134,6 +161,7 @@ const ticketCommand = new SlashCommandBuilder()
       )
       .addStringOption((option) => option.setName("link").setDescription("Direct download link for large token files"))
   )
+  .addSubcommand((subcommand) => subcommand.setName("approve-donation").setDescription("Approve the donation proof in the current ticket"))
   .addSubcommand((subcommand) =>
     subcommand
       .setName("add-member")
