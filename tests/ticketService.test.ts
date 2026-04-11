@@ -341,7 +341,7 @@ describe("TicketService", () => {
     });
 
     expect(claimResult.ok).toBe(true);
-    expect(gateway.channelMessages.at(-1)?.content).toContain("gửi 1 ảnh màn hình giống mẫu");
+    expect(gateway.channelMessages.at(-1)?.content).toContain("20 phút");
 
     await service.handleIncomingTicketMessage({
       channelId: "steam-ticket-channel",
@@ -379,6 +379,18 @@ describe("TicketService", () => {
       closedAt: null,
       transcriptMessageId: null
     });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "staff-1",
+      eventType: "ticket.claimed",
+      payload: {}
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "user-1",
+      eventType: "ticket.screenshot_validation_passed",
+      payload: {}
+    });
 
     const result = await service.activateByTicketId("ticket-steam", {
       actorId: "user-1",
@@ -410,6 +422,24 @@ describe("TicketService", () => {
       closedAt: null,
       transcriptMessageId: null
     });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "staff-1",
+      eventType: "ticket.claimed",
+      payload: {}
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "user-1",
+      eventType: "ticket.screenshot_validation_passed",
+      payload: {}
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "user-1",
+      eventType: "ticket.activation_requested",
+      payload: {}
+    });
 
     const result = await service.sendActivationTokenByChannel(
       "steam-ticket-channel",
@@ -420,7 +450,8 @@ describe("TicketService", () => {
       },
       {
         name: "token.zip",
-        url: "https://example.com/token.zip"
+        url: "https://example.com/token.zip",
+        linkUrl: null
       }
     );
 
@@ -428,9 +459,174 @@ describe("TicketService", () => {
     expect(gateway.activationTokenPanels).toEqual([
       {
         channelId: "steam-ticket-channel",
+        ticketId: "ticket-steam",
         fileName: "token.zip",
-        fileUrl: "https://example.com/token.zip"
+        fileUrl: "https://example.com/token.zip",
+        linkUrl: null,
+        tokenExpiresAt: expect.any(Date)
       }
     ]);
+  });
+
+  it("lets admin send a token link without uploading a file", async () => {
+    tickets.seedTicket({
+      id: "ticket-steam",
+      guildId: "guild-1",
+      userId: "user-1",
+      channelId: "steam-ticket-channel",
+      optionId: "steam-option-1",
+      status: "open",
+      originalCategoryId: "steam-category",
+      claimedBy: "staff-1",
+      closedBy: null,
+      closedAt: null,
+      transcriptMessageId: null
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "staff-1",
+      eventType: "ticket.claimed",
+      payload: {}
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "user-1",
+      eventType: "ticket.screenshot_validation_passed",
+      payload: {}
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "user-1",
+      eventType: "ticket.activation_requested",
+      payload: {}
+    });
+
+    const result = await service.sendActivationTokenByChannel(
+      "steam-ticket-channel",
+      {
+        actorId: "admin-1",
+        actorRoleIds: [],
+        hasManageChannels: true
+      },
+      {
+        name: null,
+        url: null,
+        linkUrl: "https://example.com/token"
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(gateway.activationTokenPanels[0]?.linkUrl).toBe("https://example.com/token");
+    expect(gateway.activationTokenPanels[0]?.fileUrl).toBeNull();
+  });
+
+  it("lets the requester confirm the token and schedules auto close", async () => {
+    tickets.seedTicket({
+      id: "ticket-steam",
+      guildId: "guild-1",
+      userId: "user-1",
+      channelId: "steam-ticket-channel",
+      optionId: "steam-option-1",
+      status: "open",
+      originalCategoryId: "steam-category",
+      claimedBy: "staff-1",
+      closedBy: null,
+      closedAt: null,
+      transcriptMessageId: null
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "staff-1",
+      eventType: "ticket.claimed",
+      payload: {}
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "user-1",
+      eventType: "ticket.screenshot_validation_passed",
+      payload: {}
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "user-1",
+      eventType: "ticket.activation_requested",
+      payload: {}
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "admin-1",
+      eventType: "ticket.activation_token_sent",
+      payload: {}
+    });
+
+    const result = await service.confirmTokenDownloadedByTicketId("ticket-steam", {
+      actorId: "user-1",
+      actorRoleIds: [],
+      hasManageChannels: false
+    });
+
+    expect(result.ok).toBe(true);
+    expect(gateway.activationTokenConfirmations).toEqual([
+      {
+        channelId: "steam-ticket-channel",
+        ticketId: "ticket-steam",
+        activatedBy: "user-1",
+        autoCloseAt: expect.any(Date)
+      }
+    ]);
+  });
+
+  it("submits a support reason and tags the claimed staff member", async () => {
+    tickets.seedTicket({
+      id: "ticket-steam",
+      guildId: "guild-1",
+      userId: "user-1",
+      channelId: "steam-ticket-channel",
+      optionId: "steam-option-1",
+      status: "open",
+      originalCategoryId: "steam-category",
+      claimedBy: "staff-1",
+      closedBy: null,
+      closedAt: null,
+      transcriptMessageId: null
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "staff-1",
+      eventType: "ticket.claimed",
+      payload: {}
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "user-1",
+      eventType: "ticket.screenshot_validation_passed",
+      payload: {}
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "user-1",
+      eventType: "ticket.activation_requested",
+      payload: {}
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam",
+      actorId: "admin-1",
+      eventType: "ticket.activation_token_sent",
+      payload: {}
+    });
+
+    const result = await service.submitTokenSupportByTicketId(
+      "ticket-steam",
+      {
+        actorId: "user-1",
+        actorRoleIds: [],
+        hasManageChannels: false
+      },
+      "Game không mở sau khi dán token."
+    );
+
+    expect(result.ok).toBe(true);
+    expect(gateway.channelMessages.at(-1)?.content).toContain("<@staff-1>");
+    expect(gateway.channelMessages.at(-1)?.content).toContain("Game không mở");
   });
 });

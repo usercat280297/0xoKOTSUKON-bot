@@ -214,10 +214,15 @@ async function handleTicketCommand(interaction: ChatInputCommandInteraction, tic
       return;
     }
     case "send-token": {
-      const file = interaction.options.getAttachment("file", true);
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.deferReply({ ephemeral: true });
+      }
+      const file = interaction.options.getAttachment("file");
+      const link = interaction.options.getString("link");
       const result = await tickets.sendActivationTokenByChannel(interaction.channelId, actor, {
-        name: file.name,
-        url: file.url
+        name: file?.name ?? null,
+        url: file?.url ?? null,
+        linkUrl: link ?? null
       });
       await replyEphemeral(interaction, result.message);
       return;

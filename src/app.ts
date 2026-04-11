@@ -3,7 +3,7 @@ import type { Pool } from "pg";
 import type { BotEnv } from "./config/env";
 import { handleChatInputCommand } from "./commands/handleChatInputCommand";
 import { createPool } from "./db/pool";
-import { handleButtonInteraction, handleStringSelectMenuInteraction } from "./interactions/router";
+import { handleButtonInteraction, handleModalSubmitInteraction, handleStringSelectMenuInteraction } from "./interactions/router";
 import { PostgresGuildConfigRepository } from "./repositories/postgresGuildConfigRepository";
 import { PostgresPanelRepository } from "./repositories/postgresPanelRepository";
 import { PostgresTicketRepository } from "./repositories/postgresTicketRepository";
@@ -48,6 +48,7 @@ export function createBotApp(env: BotEnv): BotApp {
   const permissionService = new PermissionService();
   const transcriptService = new TranscriptService();
   const steamActivationScreenshots = new TesseractSteamActivationScreenshotService();
+  let deadlineSweepTimer: NodeJS.Timeout | null = null;
 
   const panelService = new PanelService(panelRepository, gateway);
   const ticketService = new TicketService(
@@ -89,6 +90,14 @@ export function createBotApp(env: BotEnv): BotApp {
           panels: panelService,
           tickets: ticketService
         });
+        return;
+      }
+
+      if (interaction.isModalSubmit()) {
+        await handleModalSubmitInteraction(interaction, {
+          panels: panelService,
+          tickets: ticketService
+        });
       }
     } catch (error) {
       console.error("Failed to handle interaction.", error);
@@ -126,8 +135,20 @@ export function createBotApp(env: BotEnv): BotApp {
     pool,
     async start() {
       await client.login(env.discordToken);
+      await ticketService.processExpiredSteamDeadlines().catch((error) => {
+        console.error("Failed to process ticket deadlines on startup.", error);
+      });
+      deadlineSweepTimer = setInterval(() => {
+        ticketService.processExpiredSteamDeadlines().catch((error) => {
+          console.error("Failed to process ticket deadlines.", error);
+        });
+      }, 15_000);
     },
     async stop() {
+      if (deadlineSweepTimer) {
+        clearInterval(deadlineSweepTimer);
+        deadlineSweepTimer = null;
+      }
       client.destroy();
       await pool.end();
     },

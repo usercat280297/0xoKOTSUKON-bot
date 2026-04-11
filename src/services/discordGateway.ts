@@ -49,8 +49,11 @@ export interface SendLogParams {
 
 export interface SendActivationTokenPanelParams {
   channelId: string;
-  fileName: string;
-  fileUrl: string;
+  ticketId: string;
+  fileName?: string | null;
+  fileUrl?: string | null;
+  linkUrl?: string | null;
+  tokenExpiresAt: Date;
 }
 
 export interface DiscordTicketGateway {
@@ -63,6 +66,7 @@ export interface DiscordTicketGateway {
   sendVerificationReadyPrompt(channelId: string, ticketId: string): Promise<void>;
   markVerificationReadyState(channelId: string, ticketId: string, activatedBy: string): Promise<void>;
   sendActivationTokenPanel(params: SendActivationTokenPanelParams): Promise<void>;
+  markActivationTokenConfirmed(channelId: string, ticketId: string, activatedBy: string, autoCloseAt: Date): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
   addChannelMember(channelId: string, userId: string): Promise<void>;
   removeChannelMember(channelId: string, userId: string): Promise<void>;
@@ -165,6 +169,34 @@ function buildVerificationReadyRow(ticketId: string, activated = false): ActionR
   );
 }
 
+function buildActivationTokenActionRow(
+  ticketId: string,
+  options?: { confirmed?: boolean; linkUrl?: string | null }
+): ActionRowBuilder<ButtonBuilder> {
+  const confirmed = options?.confirmed ?? false;
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(ComponentIds.tokenActivatedButton(ticketId))
+      .setLabel(confirmed ? "Đã xác nhận" : "Hoạt động")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(confirmed),
+    new ButtonBuilder()
+      .setCustomId(ComponentIds.tokenSupportButton(ticketId))
+      .setLabel("Support")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(confirmed),
+    new ButtonBuilder().setCustomId(ComponentIds.closeButton(ticketId)).setLabel("Đóng").setStyle(ButtonStyle.Danger)
+  );
+
+  if (options?.linkUrl) {
+    row.addComponents(
+      new ButtonBuilder().setLabel("Mở link token").setStyle(ButtonStyle.Link).setURL(options.linkUrl)
+    );
+  }
+
+  return row;
+}
+
 function buildVerificationReadyEmbed(activated = false): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(activated ? 0x22c55e : 0xf59e0b)
@@ -176,22 +208,44 @@ function buildVerificationReadyEmbed(activated = false): EmbedBuilder {
     );
 }
 
-function buildActivationTokenEmbed(): EmbedBuilder {
+function buildActivationTokenEmbed(options: {
+  hasAttachment: boolean;
+  hasLink: boolean;
+  tokenExpiresAt: Date;
+  confirmed?: boolean;
+  autoCloseAt?: Date;
+}): EmbedBuilder {
+  const expiresAt = toDiscordTimestamp(options.tokenExpiresAt);
+  const autoCloseAt = options.autoCloseAt ? toDiscordTimestamp(options.autoCloseAt) : null;
+  const downloadLine = options.hasAttachment
+    ? options.hasLink
+      ? "***TẢI TOKEN BÊN TRÊN HOẶC DÙNG NÚT LINK BÊN DƯỚI***"
+      : "***TẢI TOKEN BÊN TRÊN***"
+    : "***MỞ LINK TOKEN Ở NÚT BÊN DƯỚI***";
+
   return new EmbedBuilder()
-    .setColor(0x3b82f6)
-    .setTitle("File kích hoạt đã sẵn sàng")
+    .setColor(options.confirmed ? 0x22c55e : 0x3b82f6)
+    .setTitle(options.confirmed ? "Đã xác nhận tải token" : "File kích hoạt đã sẵn sàng")
     .setDescription(
       [
-        "***SAU KHI NHẬN ĐƯỢC FILE KÍCH HOẠT, HÃY LÀM ĐÚNG HƯỚNG DẪN ĐÃ NÊU***",
-        "***LƯU Ý: tải file token kích hoạt, giải nén và dán vào thư mục game trong vòng 20p, nếu không làm token sẽ hết hạn***",
-        "",
-        "**NẾU CRACK HOẠT ĐỘNG, GỬI ẢNH VÀO**",
-        `➜ <#${STEAM_ACTIVATION_SHARE_REVIEW_CHANNEL_ID}> (#📸┇𝑺𝑯𝑨𝑹𝑬-𝑹𝑬𝑽𝑰𝑬𝑾)`,
-        "",
-        "**NẾU LỖI, HÃY GỬI ẢNH VÀO**",
-        `➜ <#${STEAM_ACTIVATION_SUPPORT_CHANNEL_ID}> (#⚠┇𝑺𝑼𝑷𝑷𝑶𝑹𝑻-𝑵𝑯𝑨𝑼)`,
-        "",
-        "***TẢI TOKEN BÊN DƯỚI***"
+        ...(options.confirmed
+          ? [
+              "Vui lòng đợi 1 phút nhé, ticket sẽ tự đóng.",
+              `Tự đóng <t:${autoCloseAt}:R>.`
+            ]
+          : [
+              "***SAU KHI NHẬN ĐƯỢC FILE KÍCH HOẠT, HÃY LÀM ĐÚNG HƯỚNG DẪN ĐÃ NÊU***",
+              "***LƯU Ý: tải file token kích hoạt, giải nén và dán vào thư mục game trong vòng 20p, nếu không làm token sẽ hết hạn***",
+              `Hết hạn tải token <t:${expiresAt}:R>.`,
+              "",
+              "**NẾU CRACK HOẠT ĐỘNG, GỬI ẢNH VÀO**",
+              `➜ <#${STEAM_ACTIVATION_SHARE_REVIEW_CHANNEL_ID}> (#📸┇𝑺𝑯𝑨𝑹𝑬-𝑹𝑬𝑽𝑰𝑬𝑾)`,
+              "",
+              "**NẾU LỖI, HÃY GỬI ẢNH VÀO**",
+              `➜ <#${STEAM_ACTIVATION_SUPPORT_CHANNEL_ID}> (#⚠┇𝑺𝑼𝑷𝑷𝑶𝑹𝑻-𝑵𝑯𝑨𝑼)`,
+              "",
+              downloadLine
+            ])
       ].join("\n")
     );
 }
@@ -517,18 +571,59 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
 
   public async sendActivationTokenPanel(params: SendActivationTokenPanelParams): Promise<void> {
     const channel = await this.getTextChannel(params.channelId);
-    const response = await fetch(params.fileUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to download activation token file: ${response.status}`);
+    const files: AttachmentBuilder[] = [];
+
+    if (params.fileUrl && params.fileName) {
+      const response = await fetch(params.fileUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to download activation token file: ${response.status}`);
+      }
+
+      files.push(
+        new AttachmentBuilder(Buffer.from(await response.arrayBuffer()), {
+          name: params.fileName
+        })
+      );
     }
 
-    const file = new AttachmentBuilder(Buffer.from(await response.arrayBuffer()), {
-      name: params.fileName
-    });
-
     await channel.send({
-      embeds: [buildActivationTokenEmbed()],
-      files: [file]
+      embeds: [
+        buildActivationTokenEmbed({
+          hasAttachment: files.length > 0,
+          hasLink: Boolean(params.linkUrl),
+          tokenExpiresAt: params.tokenExpiresAt
+        })
+      ],
+      files,
+      components: [buildActivationTokenActionRow(params.ticketId, { linkUrl: params.linkUrl })]
+    });
+  }
+
+  public async markActivationTokenConfirmed(
+    channelId: string,
+    ticketId: string,
+    _activatedBy: string,
+    autoCloseAt: Date
+  ): Promise<void> {
+    const target = await this.findActivationTokenMessage(channelId, ticketId);
+    if (!target) {
+      return;
+    }
+
+    const hasAttachment = target.attachments.size > 0;
+    const linkUrl = this.readLinkButtonUrl(target);
+
+    await target.edit({
+      embeds: [
+        buildActivationTokenEmbed({
+          hasAttachment,
+          hasLink: Boolean(linkUrl),
+          tokenExpiresAt: autoCloseAt,
+          confirmed: true,
+          autoCloseAt
+        })
+      ],
+      components: [buildActivationTokenActionRow(ticketId, { confirmed: true, linkUrl })]
     });
   }
 
@@ -639,6 +734,36 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
         message.components.some((row) => rowContainsCustomId(row, ComponentIds.activationButton(ticketId)))
       ) ?? null
     );
+  }
+
+  private async findActivationTokenMessage(channelId: string, ticketId: string): Promise<Message | null> {
+    const channel = await this.getTextChannel(channelId);
+    const messages = await channel.messages.fetch({ limit: 50 });
+
+    return (
+      messages.find((message) =>
+        message.components.some(
+          (row) =>
+            rowContainsCustomId(row, ComponentIds.tokenActivatedButton(ticketId)) ||
+            rowContainsCustomId(row, ComponentIds.tokenSupportButton(ticketId))
+        )
+      ) ?? null
+    );
+  }
+
+  private readLinkButtonUrl(message: Message): string | null {
+    for (const row of message.components) {
+      if (!("components" in row) || !Array.isArray(row.components)) {
+        continue;
+      }
+      for (const component of row.components) {
+        if ("url" in component && typeof component.url === "string" && component.url.length > 0) {
+          return component.url;
+        }
+      }
+    }
+
+    return null;
   }
 
   private replaceContentLine(content: string, pattern: RegExp, replacement: string): string {

@@ -38,8 +38,9 @@ export interface IncomingTicketAttachment {
 }
 
 export interface OutgoingTicketAttachment {
-  name: string;
-  url: string;
+  name: string | null;
+  url: string | null;
+  linkUrl: string | null;
 }
 
 export interface IncomingTicketMessage {
@@ -47,6 +48,22 @@ export interface IncomingTicketMessage {
   authorId: string;
   attachments: IncomingTicketAttachment[];
 }
+
+interface SteamWorkflowSnapshot {
+  claimedAt: Date | null;
+  screenshotValidatedAt: Date | null;
+  activationRequestedAt: Date | null;
+  tokenSentAt: Date | null;
+  tokenDueAt: Date | null;
+  downloadConfirmedAt: Date | null;
+  autoCloseAt: Date | null;
+  screenshotDueAt: Date | null;
+}
+
+const SCREENSHOT_WINDOW_MS = 20 * 60 * 1000;
+const TOKEN_WINDOW_MS = 30 * 60 * 1000;
+const AUTO_CLOSE_AFTER_ACTIVATION_MS = 60 * 1000;
+const SYSTEM_ACTOR_ID = "system";
 
 export class TicketService {
   public constructor(
@@ -168,6 +185,49 @@ export class TicketService {
     return this.activateResolvedTicket(() => this.tickets.findById(ticketId), actor);
   }
 
+  public confirmTokenDownloadedByTicketId(ticketId: string, actor: ActorContext): Promise<ServiceResponse> {
+    return this.confirmTokenDownloadedResolved(() => this.tickets.findById(ticketId), actor);
+  }
+
+  public submitTokenSupportByTicketId(ticketId: string, actor: ActorContext, reason: string): Promise<ServiceResponse> {
+    return this.submitTokenSupportResolved(() => this.tickets.findById(ticketId), actor, reason);
+  }
+
+  public async processExpiredSteamDeadlines(): Promise<void> {
+    const openTickets = await this.tickets.listOpen();
+
+    for (const ticket of openTickets) {
+      const route = await this.resolveTicketRoute(ticket);
+      if (!route || !this.isSteamActivationPanel(route.panel)) {
+        continue;
+      }
+
+      const workflow = await this.getSteamWorkflow(ticket.id);
+      const now = new Date();
+
+      if (workflow.autoCloseAt && workflow.autoCloseAt.getTime() <= now.getTime()) {
+        await this.gateway.sendChannelMessage(ticket.channelId, "Đã đủ 1 phút, mình đóng ticket này nhé.");
+        await this.forceCloseTicket(ticket, "Ticket tự đóng sau khi xác nhận hoạt động.");
+        continue;
+      }
+
+      if (workflow.tokenDueAt && workflow.tokenDueAt.getTime() <= now.getTime()) {
+        await this.gateway.sendChannelMessage(ticket.channelId, "Đã quá 30 phút tải token, ticket này sẽ được đóng.");
+        await this.forceCloseTicket(ticket, "Ticket quá hạn tải token.");
+        continue;
+      }
+
+      if (
+        workflow.screenshotDueAt &&
+        !workflow.screenshotValidatedAt &&
+        workflow.screenshotDueAt.getTime() <= now.getTime()
+      ) {
+        await this.gateway.sendChannelMessage(ticket.channelId, "Đã quá 20 phút gửi ảnh xác minh, ticket này sẽ được đóng.");
+        await this.forceCloseTicket(ticket, "Ticket quá hạn gửi ảnh xác minh.");
+      }
+    }
+  }
+
   public reopenByChannelId(channelId: string, actor: ActorContext): Promise<ServiceResponse> {
     return this.reopenResolvedTicket(() => this.tickets.findByChannelId(channelId), actor);
   }
@@ -230,6 +290,13 @@ export class TicketService {
         input.channelId,
         "Ticket này chưa được staff nhận. Chờ staff nhận rồi gửi lại ảnh nhé."
       );
+      return;
+    }
+
+    const workflow = await this.getSteamWorkflow(ticket.id);
+    if (workflow.screenshotDueAt && workflow.screenshotDueAt.getTime() <= Date.now()) {
+      await this.gateway.sendChannelMessage(input.channelId, "Đã quá 20 phút gửi ảnh xác minh, ticket này sẽ được đóng.");
+      await this.forceCloseTicket(ticket, "Ticket quá hạn gửi ảnh xác minh.");
       return;
     }
 
@@ -346,7 +413,7 @@ export class TicketService {
     if (this.isSteamActivationPanel(route.panel)) {
       await this.gateway.sendChannelMessage(
         updated.channelId,
-        "Đã nhận ticket, gửi 1 ảnh màn hình giống mẫu bot đã ghim trong ticket để mình kiểm tra tiếp."
+        "Đã nhận ticket. Bạn có 20 phút để gửi 1 ảnh giống mẫu bot đã ghim trong ticket."
       );
     }
 
@@ -440,6 +507,11 @@ export class TicketService {
       return { ok: false, message: "Bạn không có quyền dùng nút activation này." };
     }
 
+    const workflow = await this.getSteamWorkflow(ticket.id);
+    if (!workflow.screenshotValidatedAt) {
+      return { ok: false, message: "Ảnh xác minh chưa đạt, chưa thể chuyển sang bước kích hoạt." };
+    }
+
     await this.tickets.addEvent({
       ticketId: ticket.id,
       actorId: actor.actorId,
@@ -477,23 +549,148 @@ export class TicketService {
       return { ok: false, message: "Chỉ admin mới được dùng lệnh này." };
     }
 
+    if (!attachment.url && !attachment.linkUrl) {
+      return { ok: false, message: "Bạn phải gửi file hoặc link token." };
+    }
+
+    const workflow = await this.getSteamWorkflow(ticket.id);
+    if (!workflow.activationRequestedAt) {
+      return { ok: false, message: "User chưa bấm bước kích hoạt, chưa thể gửi token." };
+    }
+
+    const tokenExpiresAt = new Date(Date.now() + TOKEN_WINDOW_MS);
+
     await this.gateway.sendActivationTokenPanel({
       channelId: ticket.channelId,
+      ticketId: ticket.id,
       fileName: attachment.name,
-      fileUrl: attachment.url
+      fileUrl: attachment.url,
+      linkUrl: attachment.linkUrl,
+      tokenExpiresAt
     });
     await this.tickets.addEvent({
       ticketId: ticket.id,
       actorId: actor.actorId,
       eventType: "ticket.activation_token_sent",
       payload: {
-        fileName: attachment.name
+        fileName: attachment.name,
+        hasLink: Boolean(attachment.linkUrl)
       }
     });
 
     return {
       ok: true,
-      message: "Đã gửi panel kèm file kích hoạt."
+      message: "Đã gửi panel token kích hoạt."
+    };
+  }
+
+  private async confirmTokenDownloadedResolved(
+    resolve: () => Promise<Ticket | null>,
+    actor: ActorContext
+  ): Promise<ServiceResponse> {
+    const ticket = await resolve();
+    if (!ticket) {
+      return { ok: false, message: "Không tìm thấy ticket." };
+    }
+
+    if (ticket.status !== "open") {
+      return { ok: false, message: "Ticket này đã đóng." };
+    }
+
+    const route = await this.resolveTicketRoute(ticket);
+    if (!route || !this.isSteamActivationPanel(route.panel)) {
+      return { ok: false, message: "Nút này chỉ dùng cho ticket Steam Activation." };
+    }
+
+    if (actor.actorId !== ticket.userId) {
+      return { ok: false, message: "Chỉ người mở ticket mới được xác nhận token hoạt động." };
+    }
+
+    const workflow = await this.getSteamWorkflow(ticket.id);
+    if (!workflow.tokenSentAt || !workflow.tokenDueAt) {
+      return { ok: false, message: "Admin chưa gửi token ở ticket này." };
+    }
+
+    if (workflow.tokenDueAt.getTime() <= Date.now()) {
+      await this.gateway.sendChannelMessage(ticket.channelId, "Đã quá 30 phút tải token, ticket này sẽ được đóng.");
+      await this.forceCloseTicket(ticket, "Ticket quá hạn tải token.");
+      return { ok: false, message: "Token đã quá hạn." };
+    }
+
+    const autoCloseAt = new Date(Date.now() + AUTO_CLOSE_AFTER_ACTIVATION_MS);
+    await this.tickets.addEvent({
+      ticketId: ticket.id,
+      actorId: actor.actorId,
+      eventType: "ticket.activation_download_confirmed",
+      payload: {
+        autoCloseAt: autoCloseAt.toISOString()
+      }
+    });
+    await this.gateway.markActivationTokenConfirmed(ticket.channelId, ticket.id, actor.actorId, autoCloseAt);
+
+    return {
+      ok: true,
+      message: "Đã xác nhận token hoạt động."
+    };
+  }
+
+  private async submitTokenSupportResolved(
+    resolve: () => Promise<Ticket | null>,
+    actor: ActorContext,
+    reason: string
+  ): Promise<ServiceResponse> {
+    const ticket = await resolve();
+    if (!ticket) {
+      return { ok: false, message: "Không tìm thấy ticket." };
+    }
+
+    if (ticket.status !== "open") {
+      return { ok: false, message: "Ticket này đã đóng." };
+    }
+
+    const route = await this.resolveTicketRoute(ticket);
+    if (!route || !this.isSteamActivationPanel(route.panel)) {
+      return { ok: false, message: "Nút support chỉ dùng cho ticket Steam Activation." };
+    }
+
+    if (actor.actorId !== ticket.userId) {
+      return { ok: false, message: "Chỉ người mở ticket mới được gửi lý do support ở bước này." };
+    }
+
+    const normalizedReason = reason.trim();
+    if (!normalizedReason) {
+      return { ok: false, message: "Lý do support không được để trống." };
+    }
+
+    const workflow = await this.getSteamWorkflow(ticket.id);
+    if (!workflow.tokenSentAt || !workflow.tokenDueAt) {
+      return { ok: false, message: "Admin chưa gửi token ở ticket này." };
+    }
+
+    if (workflow.tokenDueAt.getTime() <= Date.now()) {
+      await this.gateway.sendChannelMessage(ticket.channelId, "Đã quá 30 phút tải token, ticket này sẽ được đóng.");
+      await this.forceCloseTicket(ticket, "Ticket quá hạn tải token.");
+      return { ok: false, message: "Token đã quá hạn." };
+    }
+
+    await this.tickets.addEvent({
+      ticketId: ticket.id,
+      actorId: actor.actorId,
+      eventType: "ticket.activation_support_requested",
+      payload: {
+        reason: normalizedReason
+      }
+    });
+
+    const staffMention = ticket.claimedBy ? `<@${ticket.claimedBy}>` : `<@&${route.option.staffRoleId}>`;
+    await this.gateway.sendChannelMessage(
+      ticket.channelId,
+      `${staffMention} member cần support.\nLý do: ${normalizedReason}`
+    );
+
+    return {
+      ok: true,
+      message: "Đã gửi lý do support cho admin."
     };
   }
 
@@ -548,6 +745,88 @@ export class TicketService {
 
   private isSteamActivationPanel(panel: TicketPanelWithOptions): boolean {
     return panel.template === "game-activation" && panel.name.trim().toUpperCase().includes("STEAM ACTIVATION");
+  }
+
+  private async getSteamWorkflow(ticketId: string): Promise<SteamWorkflowSnapshot> {
+    const events = await this.tickets.listEvents(ticketId);
+    let claimedAt: Date | null = null;
+    let screenshotValidatedAt: Date | null = null;
+    let activationRequestedAt: Date | null = null;
+    let tokenSentAt: Date | null = null;
+    let downloadConfirmedAt: Date | null = null;
+
+    for (const event of events) {
+      const createdAt = event.createdAt ?? new Date();
+
+      switch (event.eventType) {
+        case "ticket.claimed":
+          claimedAt = createdAt;
+          screenshotValidatedAt = null;
+          activationRequestedAt = null;
+          tokenSentAt = null;
+          downloadConfirmedAt = null;
+          break;
+        case "ticket.screenshot_validation_passed":
+          screenshotValidatedAt = createdAt;
+          break;
+        case "ticket.activation_requested":
+          activationRequestedAt = createdAt;
+          break;
+        case "ticket.activation_token_sent":
+          tokenSentAt = createdAt;
+          downloadConfirmedAt = null;
+          break;
+        case "ticket.activation_download_confirmed":
+          downloadConfirmedAt = createdAt;
+          break;
+        default:
+          break;
+      }
+    }
+
+    return {
+      claimedAt,
+      screenshotValidatedAt,
+      activationRequestedAt,
+      tokenSentAt,
+      tokenDueAt: tokenSentAt ? new Date(tokenSentAt.getTime() + TOKEN_WINDOW_MS) : null,
+      downloadConfirmedAt,
+      autoCloseAt: downloadConfirmedAt ? new Date(downloadConfirmedAt.getTime() + AUTO_CLOSE_AFTER_ACTIVATION_MS) : null,
+      screenshotDueAt: claimedAt ? new Date(claimedAt.getTime() + SCREENSHOT_WINDOW_MS) : null
+    };
+  }
+
+  private async forceCloseTicket(ticket: Ticket, reason: string): Promise<void> {
+    const transcriptMessages = await this.gateway.fetchTranscriptMessages(ticket.channelId);
+    const transcriptHtml = this.transcripts.render(ticket.channelId, transcriptMessages);
+    const guildConfig = await this.guildConfigs.getByGuildId(ticket.guildId);
+    let transcriptMessageId: string | null = null;
+
+    if (guildConfig?.logChannelId) {
+      transcriptMessageId = await this.gateway.sendLogMessage({
+        logChannelId: guildConfig.logChannelId,
+        content: [
+          `Ticket closed: ${this.gateway.channelMention(ticket.channelId)}`,
+          `Requester: <@${ticket.userId}>`,
+          `Closed by: System`,
+          `Reason: ${reason}`
+        ].join("\n"),
+        transcriptHtml,
+        transcriptFileName: `${ticket.channelId}.html`
+      });
+    }
+
+    await this.tickets.close(ticket.id, SYSTEM_ACTOR_ID, transcriptMessageId);
+    await this.tickets.addEvent({
+      ticketId: ticket.id,
+      actorId: SYSTEM_ACTOR_ID,
+      eventType: "ticket.closed",
+      payload: {
+        transcriptMessageId,
+        reason
+      }
+    });
+    await this.gateway.deleteChannel(ticket.channelId);
   }
 
   private findImageAttachment(attachments: IncomingTicketAttachment[]): IncomingTicketAttachment | null {

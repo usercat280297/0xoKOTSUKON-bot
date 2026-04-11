@@ -1,6 +1,6 @@
-import type { CommandInteraction, GuildMember, InteractionReplyOptions, MessageComponentInteraction } from "discord.js";
+import type { CommandInteraction, GuildMember, InteractionReplyOptions, MessageComponentInteraction, ModalSubmitInteraction } from "discord.js";
 
-type ReplyableInteraction = CommandInteraction | MessageComponentInteraction;
+type ReplyableInteraction = CommandInteraction | MessageComponentInteraction | ModalSubmitInteraction;
 
 export async function replyEphemeral(interaction: ReplyableInteraction, content: string): Promise<void> {
   const payload: InteractionReplyOptions = {

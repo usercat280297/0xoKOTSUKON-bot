@@ -33,10 +33,12 @@ export interface PanelRepository {
 export interface TicketRepository {
   create(input: CreateTicketInput): Promise<Ticket>;
   findOpenByUser(guildId: string, userId: string): Promise<Ticket | null>;
+  listOpen(): Promise<Ticket[]>;
   findByChannelId(channelId: string): Promise<Ticket | null>;
   findById(ticketId: string): Promise<Ticket | null>;
   markClaimed(ticketId: string, claimedBy: string): Promise<Ticket>;
   close(ticketId: string, closedBy: string, transcriptMessageId: string | null): Promise<Ticket>;
   reopen(ticketId: string): Promise<Ticket>;
   addEvent(event: TicketEvent): Promise<void>;
+  listEvents(ticketId: string): Promise<TicketEvent[]>;
 }

@@ -96,6 +96,29 @@ export class PostgresTicketRepository implements TicketRepository {
     return result.rowCount === 0 ? null : mapTicket(result.rows[0]);
   }
 
+  public async listOpen(): Promise<Ticket[]> {
+    const result = await this.pool.query(
+      `
+        SELECT
+          id,
+          guild_id,
+          user_id,
+          channel_id,
+          option_id,
+          status,
+          original_category_id,
+          claimed_by,
+          closed_by,
+          closed_at,
+          transcript_message_id
+        FROM tickets
+        WHERE status = 'open'
+      `
+    );
+
+    return result.rows.map(mapTicket);
+  }
+
   public async findByChannelId(channelId: string): Promise<Ticket | null> {
     const result = await this.pool.query(
       `
@@ -236,5 +259,26 @@ export class PostgresTicketRepository implements TicketRepository {
       `,
       [event.ticketId, event.actorId, event.eventType, JSON.stringify(event.payload)]
     );
+  }
+
+  public async listEvents(ticketId: string): Promise<TicketEvent[]> {
+    const result = await this.pool.query(
+      `
+        SELECT id, ticket_id, actor_id, event_type, payload, created_at
+        FROM ticket_events
+        WHERE ticket_id = $1
+        ORDER BY created_at ASC, id ASC
+      `,
+      [ticketId]
+    );
+
+    return result.rows.map((row) => ({
+      id: Number(row.id),
+      ticketId: String(row.ticket_id),
+      actorId: String(row.actor_id),
+      eventType: String(row.event_type),
+      payload: typeof row.payload === "object" && row.payload ? (row.payload as Record<string, unknown>) : {},
+      createdAt: row.created_at ? new Date(String(row.created_at)) : undefined
+    }));
   }
 }

@@ -1,7 +1,25 @@
-import { ButtonInteraction, GuildMember, PermissionFlagsBits, StringSelectMenuInteraction } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonInteraction,
+  GuildMember,
+  ModalBuilder,
+  ModalSubmitInteraction,
+  PermissionFlagsBits,
+  StringSelectMenuInteraction,
+  TextInputBuilder,
+  TextInputStyle
+} from "discord.js";
 import { PanelService } from "../services/panelService";
 import { TicketService } from "../services/ticketService";
-import { parsePanelResetId, parsePanelSelectId, parseTicketButton, parseTicketIssueSelectId } from "../utils/componentIds";
+import {
+  ComponentIds,
+  parsePanelResetId,
+  parsePanelSelectId,
+  parseTicketButton,
+  parseTicketIssueSelectId,
+  parseTokenButton,
+  parseTokenSupportModalId
+} from "../utils/componentIds";
 import { extractDisplayName, extractRoleIds, replyEphemeral } from "../utils/interactions";
 
 export interface InteractionDependencies {
@@ -62,6 +80,42 @@ export async function handleButtonInteraction(
     return;
   }
 
+  const tokenButton = parseTokenButton(interaction.customId);
+  if (tokenButton) {
+    if (tokenButton.action === "support") {
+      const modal = new ModalBuilder()
+        .setCustomId(ComponentIds.tokenSupportModal(tokenButton.ticketId))
+        .setTitle("Lý do cần support")
+        .addComponents(
+          new ActionRowBuilder<TextInputBuilder>().addComponents(
+            new TextInputBuilder()
+              .setCustomId("reason")
+              .setLabel("Mô tả ngắn lỗi bạn đang gặp")
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(true)
+              .setMaxLength(500)
+          )
+        );
+      await interaction.showModal(modal);
+      return;
+    }
+
+    const member = interaction.member instanceof GuildMember ? interaction.member : null;
+    const actor = {
+      actorId: interaction.user.id,
+      actorRoleIds: extractRoleIds(member),
+      hasManageChannels: interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) ?? false
+    };
+    const result = await dependencies.tickets.confirmTokenDownloadedByTicketId(tokenButton.ticketId, actor);
+    if (result.ok) {
+      await interaction.deferUpdate();
+      return;
+    }
+
+    await replyEphemeral(interaction, result.message);
+    return;
+  }
+
   const parsed = parseTicketButton(interaction.customId);
   if (!parsed) {
     return;
@@ -86,6 +140,34 @@ export async function handleButtonInteraction(
     return;
   }
 
+  await replyEphemeral(interaction, result.message);
+}
+
+export async function handleModalSubmitInteraction(
+  interaction: ModalSubmitInteraction,
+  dependencies: InteractionDependencies
+): Promise<void> {
+  if (!interaction.inGuild()) {
+    await replyEphemeral(interaction, "This interaction only works inside a guild.");
+    return;
+  }
+
+  const ticketId = parseTokenSupportModalId(interaction.customId);
+  if (!ticketId) {
+    return;
+  }
+
+  const member = interaction.member instanceof GuildMember ? interaction.member : null;
+  const actor = {
+    actorId: interaction.user.id,
+    actorRoleIds: extractRoleIds(member),
+    hasManageChannels: interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) ?? false
+  };
+  const result = await dependencies.tickets.submitTokenSupportByTicketId(
+    ticketId,
+    actor,
+    interaction.fields.getTextInputValue("reason")
+  );
   await replyEphemeral(interaction, result.message);
 }
 

@@ -168,6 +168,10 @@ export class FakeTicketRepository implements TicketRepository {
     return [...this.tickets.values()].find((ticket) => ticket.guildId === guildId && ticket.userId === userId && ticket.status === "open") ?? null;
   }
 
+  public async listOpen(): Promise<Ticket[]> {
+    return [...this.tickets.values()].filter((ticket) => ticket.status === "open");
+  }
+
   public async findByChannelId(channelId: string): Promise<Ticket | null> {
     return [...this.tickets.values()].find((ticket) => ticket.channelId === channelId) ?? null;
   }
@@ -200,7 +204,14 @@ export class FakeTicketRepository implements TicketRepository {
   }
 
   public async addEvent(event: TicketEvent): Promise<void> {
-    this.events.push(event);
+    this.events.push({
+      ...event,
+      createdAt: event.createdAt ?? new Date()
+    });
+  }
+
+  public async listEvents(ticketId: string): Promise<TicketEvent[]> {
+    return this.events.filter((event) => event.ticketId === ticketId);
   }
 
   private mustGet(ticketId: string): Ticket {
@@ -222,6 +233,7 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
   public verificationPrompts: Array<{ channelId: string; ticketId: string }> = [];
   public verificationActivations: Array<{ channelId: string; ticketId: string; activatedBy: string }> = [];
   public activationTokenPanels: SendActivationTokenPanelParams[] = [];
+  public activationTokenConfirmations: Array<{ channelId: string; ticketId: string; activatedBy: string; autoCloseAt: Date }> = [];
   public deletedChannels: string[] = [];
   public movedChannels: Array<{ channelId: string; categoryId: string | null }> = [];
   public requesterPermissions: Array<{ channelId: string; requesterId: string; allowSend: boolean }> = [];
@@ -275,6 +287,15 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
 
   public async sendActivationTokenPanel(params: SendActivationTokenPanelParams): Promise<void> {
     this.activationTokenPanels.push(params);
+  }
+
+  public async markActivationTokenConfirmed(
+    channelId: string,
+    ticketId: string,
+    activatedBy: string,
+    autoCloseAt: Date
+  ): Promise<void> {
+    this.activationTokenConfirmations.push({ channelId, ticketId, activatedBy, autoCloseAt });
   }
 
   public async deleteChannel(channelId: string): Promise<void> {

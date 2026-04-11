@@ -128,10 +128,11 @@ const ticketCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand
       .setName("send-token")
-      .setDescription("Send the activation token panel and file in the current ticket")
+      .setDescription("Send the activation token panel with a file or link in the current ticket")
       .addAttachmentOption((option) =>
-        option.setName("file").setDescription("Activation token archive").setRequired(true)
+        option.setName("file").setDescription("Activation token archive")
       )
+      .addStringOption((option) => option.setName("link").setDescription("Direct download link for large token files"))
   )
   .addSubcommand((subcommand) =>
     subcommand
