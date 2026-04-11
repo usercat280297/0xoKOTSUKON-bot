@@ -9,6 +9,7 @@ export interface GuildConfig {
   donationThanksChannelId: string | null;
   donationLinkUrl: string | null;
   donationQrImageUrl: string | null;
+  donationAllowedRoleIds: string[];
 }
 
 export interface TicketPanel {

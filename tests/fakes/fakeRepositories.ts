@@ -41,6 +41,7 @@ export class FakeGuildConfigRepository implements GuildConfigRepository {
       donationThanksChannelId?: string | null;
       donationLinkUrl?: string | null;
       donationQrImageUrl?: string | null;
+      donationAllowedRoleIds?: string[] | null;
     }
   ): Promise<GuildConfig> {
     this.current = {
@@ -50,7 +51,8 @@ export class FakeGuildConfigRepository implements GuildConfigRepository {
       donatorRoleId: patch.donatorRoleId ?? this.current?.donatorRoleId ?? null,
       donationThanksChannelId: patch.donationThanksChannelId ?? this.current?.donationThanksChannelId ?? null,
       donationLinkUrl: patch.donationLinkUrl ?? this.current?.donationLinkUrl ?? null,
-      donationQrImageUrl: patch.donationQrImageUrl ?? this.current?.donationQrImageUrl ?? null
+      donationQrImageUrl: patch.donationQrImageUrl ?? this.current?.donationQrImageUrl ?? null,
+      donationAllowedRoleIds: patch.donationAllowedRoleIds ?? this.current?.donationAllowedRoleIds ?? []
     };
     return this.current;
   }

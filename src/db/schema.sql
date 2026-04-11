@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS guild_configs (
   donation_thanks_channel_id TEXT NULL,
   donation_link_url TEXT NULL,
   donation_qr_image_url TEXT NULL,
+  donation_allowed_role_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -21,6 +22,9 @@ ALTER TABLE guild_configs
 
 ALTER TABLE guild_configs
   ADD COLUMN IF NOT EXISTS donation_qr_image_url TEXT NULL;
+
+ALTER TABLE guild_configs
+  ADD COLUMN IF NOT EXISTS donation_allowed_role_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 CREATE TABLE IF NOT EXISTS ticket_panels (
   id TEXT PRIMARY KEY,

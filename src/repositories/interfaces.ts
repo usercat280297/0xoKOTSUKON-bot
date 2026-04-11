@@ -22,6 +22,7 @@ export interface GuildConfigRepository {
       donationThanksChannelId?: string | null;
       donationLinkUrl?: string | null;
       donationQrImageUrl?: string | null;
+      donationAllowedRoleIds?: string[] | null;
     }
   ): Promise<GuildConfig>;
 }

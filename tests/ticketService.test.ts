@@ -479,7 +479,8 @@ describe("TicketService", () => {
       donatorRoleId: "donator-role",
       donationThanksChannelId: "thanks-channel",
       donationLinkUrl: "https://buymeacoffee.com/example",
-      donationQrImageUrl: "https://cdn.example.com/qr.png"
+      donationQrImageUrl: "https://cdn.example.com/qr.png",
+      donationAllowedRoleIds: []
     };
 
     const result = await service.createFromSelection({
@@ -500,6 +501,35 @@ describe("TicketService", () => {
         donationQrImageUrl: "https://cdn.example.com/qr.png"
       }
     ]);
+  });
+
+  it("allows donation tickets for configured bypass roles", async () => {
+    guildConfigs.current = {
+      guildId: "guild-1",
+      logChannelId: null,
+      closedCategoryId: null,
+      donatorRoleId: "donator-role",
+      donationThanksChannelId: "thanks-channel",
+      donationLinkUrl: "https://buymeacoffee.com/example",
+      donationQrImageUrl: "https://cdn.example.com/qr.png",
+      donationAllowedRoleIds: ["gamers-role", "booster-role", "donator-role"]
+    };
+
+    const result = await service.createFromSelection({
+      guildId: "guild-1",
+      panelId: "panel-donation",
+      optionValue: "donate",
+      userId: "user-2",
+      memberRoleIds: ["booster-role"],
+      displayName: "Boosted Alice"
+    });
+
+    expect(result.ok).toBe(true);
+    expect(gateway.createdChannels.at(-1)).toMatchObject({
+      targetCategoryId: "donate-category",
+      staffRoleId: "donation-staff",
+      requesterId: "user-2"
+    });
   });
 
   it("records donation proof and lets admin approve it", async () => {

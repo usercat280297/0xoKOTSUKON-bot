@@ -3,6 +3,10 @@ import type { GuildConfigRepository } from "./interfaces";
 import type { GuildConfig } from "../domain/types";
 
 function mapRow(row: Record<string, unknown>): GuildConfig {
+  const donationAllowedRoleIds = Array.isArray(row.donation_allowed_role_ids)
+    ? row.donation_allowed_role_ids.map((value) => String(value)).filter(Boolean)
+    : [];
+
   return {
     guildId: String(row.guild_id),
     logChannelId: row.log_channel_id ? String(row.log_channel_id) : null,
@@ -10,7 +14,8 @@ function mapRow(row: Record<string, unknown>): GuildConfig {
     donatorRoleId: row.donator_role_id ? String(row.donator_role_id) : null,
     donationThanksChannelId: row.donation_thanks_channel_id ? String(row.donation_thanks_channel_id) : null,
     donationLinkUrl: row.donation_link_url ? String(row.donation_link_url) : null,
-    donationQrImageUrl: row.donation_qr_image_url ? String(row.donation_qr_image_url) : null
+    donationQrImageUrl: row.donation_qr_image_url ? String(row.donation_qr_image_url) : null,
+    donationAllowedRoleIds
   };
 }
 
@@ -27,7 +32,8 @@ export class PostgresGuildConfigRepository implements GuildConfigRepository {
           donator_role_id,
           donation_thanks_channel_id,
           donation_link_url,
-          donation_qr_image_url
+          donation_qr_image_url,
+          donation_allowed_role_ids
         FROM guild_configs
         WHERE guild_id = $1
       `,
@@ -45,6 +51,7 @@ export class PostgresGuildConfigRepository implements GuildConfigRepository {
       donationThanksChannelId?: string | null;
       donationLinkUrl?: string | null;
       donationQrImageUrl?: string | null;
+      donationAllowedRoleIds?: string[] | null;
     }
   ): Promise<GuildConfig> {
     const current = await this.getByGuildId(guildId);
@@ -60,6 +67,10 @@ export class PostgresGuildConfigRepository implements GuildConfigRepository {
       patch.donationLinkUrl !== undefined ? patch.donationLinkUrl : current?.donationLinkUrl ?? null;
     const donationQrImageUrl =
       patch.donationQrImageUrl !== undefined ? patch.donationQrImageUrl : current?.donationQrImageUrl ?? null;
+    const donationAllowedRoleIds =
+      patch.donationAllowedRoleIds !== undefined
+        ? patch.donationAllowedRoleIds ?? []
+        : current?.donationAllowedRoleIds ?? [];
 
     const result = await this.pool.query(
       `
@@ -71,9 +82,10 @@ export class PostgresGuildConfigRepository implements GuildConfigRepository {
           donation_thanks_channel_id,
           donation_link_url,
           donation_qr_image_url,
+          donation_allowed_role_ids,
           updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW())
         ON CONFLICT (guild_id)
         DO UPDATE SET
           log_channel_id = EXCLUDED.log_channel_id,
@@ -82,6 +94,7 @@ export class PostgresGuildConfigRepository implements GuildConfigRepository {
           donation_thanks_channel_id = EXCLUDED.donation_thanks_channel_id,
           donation_link_url = EXCLUDED.donation_link_url,
           donation_qr_image_url = EXCLUDED.donation_qr_image_url,
+          donation_allowed_role_ids = EXCLUDED.donation_allowed_role_ids,
           updated_at = NOW()
         RETURNING
           guild_id,
@@ -90,9 +103,19 @@ export class PostgresGuildConfigRepository implements GuildConfigRepository {
           donator_role_id,
           donation_thanks_channel_id,
           donation_link_url,
-          donation_qr_image_url
+          donation_qr_image_url,
+          donation_allowed_role_ids
       `,
-      [guildId, logChannelId, closedCategoryId, donatorRoleId, donationThanksChannelId, donationLinkUrl, donationQrImageUrl]
+      [
+        guildId,
+        logChannelId,
+        closedCategoryId,
+        donatorRoleId,
+        donationThanksChannelId,
+        donationLinkUrl,
+        donationQrImageUrl,
+        JSON.stringify(donationAllowedRoleIds)
+      ]
     );
 
     return mapRow(result.rows[0]);

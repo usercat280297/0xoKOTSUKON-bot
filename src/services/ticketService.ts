@@ -101,8 +101,7 @@ export class TicketService {
     }
 
     const guildConfig = await this.guildConfigs.getByGuildId(input.guildId);
-    const extraAllowedRoleIds =
-      this.isSteamActivationPanel(route.panel) && guildConfig?.donatorRoleId ? [guildConfig.donatorRoleId] : [];
+    const extraAllowedRoleIds = this.getExtraAllowedRoleIds(route.panel, guildConfig);
 
     if (!this.permissions.hasRequiredRole(input.memberRoleIds, route.option.requiredRoleId, extraAllowedRoleIds)) {
       return {
@@ -948,6 +947,22 @@ export class TicketService {
 
   private isDonationPanel(panel: TicketPanelWithOptions): boolean {
     return panel.template === "donation";
+  }
+
+  private getExtraAllowedRoleIds(panel: TicketPanelWithOptions, guildConfig: Awaited<ReturnType<GuildConfigRepository["getByGuildId"]>>): string[] {
+    if (!guildConfig) {
+      return [];
+    }
+
+    if (this.isSteamActivationPanel(panel) && guildConfig.donatorRoleId) {
+      return [guildConfig.donatorRoleId];
+    }
+
+    if (this.isDonationPanel(panel)) {
+      return guildConfig.donationAllowedRoleIds ?? [];
+    }
+
+    return [];
   }
 
   private async getSteamWorkflow(ticketId: string): Promise<SteamWorkflowSnapshot> {
