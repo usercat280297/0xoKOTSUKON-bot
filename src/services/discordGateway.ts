@@ -462,14 +462,14 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     });
   }
 
-  public async markVerificationReadyState(channelId: string, ticketId: string, activatedBy: string): Promise<void> {
+  public async markVerificationReadyState(channelId: string, ticketId: string, _activatedBy: string): Promise<void> {
     const target = await this.findVerificationReadyMessage(channelId, ticketId);
     if (!target) {
       return;
     }
 
     await target.edit({
-      content: `Đã chuyển sang bước kích hoạt bởi <@${activatedBy}>.`,
+      content: "Vui lòng đợi 1 chút nhé, admin sẽ vào kích hoạt cho bạn.",
       components: [buildVerificationReadyRow(ticketId, true)]
     });
   }
