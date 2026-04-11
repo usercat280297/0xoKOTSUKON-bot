@@ -217,6 +217,7 @@ export class TicketService {
     }
 
     try {
+      await this.gateway.sendChannelMessage(input.channelId, "Đang xác minh ảnh...");
       const result = await this.steamActivationScreenshots.validateAttachmentUrl(imageAttachment.url);
       await this.tickets.addEvent({
         ticketId: ticket.id,
@@ -471,20 +472,10 @@ export class TicketService {
 
   private buildScreenshotValidationMessage(result: SteamActivationScreenshotValidationResult): string {
     if (result.passed) {
-      return [
-        "Ảnh xác minh đã qua kiểm tra sơ bộ.",
-        `Điểm khớp mẫu: **${result.score}%**`,
-        `Tín hiệu khớp: ${result.matchedSignals.join(", ")}`,
-        "Staff có thể tiếp tục xử lý ticket này."
-      ].join("\n");
+      return `Ảnh hợp lệ, độ khớp **${result.score}%**.`;
     }
 
-    return [
-      "Ảnh này chưa khớp mẫu đủ để qua kiểm tra sơ bộ.",
-      `Điểm khớp mẫu: **${result.score}%**`,
-      `Còn thiếu: ${result.missingSignals.join("; ")}`,
-      "Hãy chụp lại sao cho thấy rõ cửa sổ Windows Update Blocker và cửa sổ properties của thư mục game."
-    ].join("\n");
+    return `Ảnh chưa đạt, độ khớp **${result.score}%**. Hãy gửi lại ảnh rõ hơn.`;
   }
 
   private buildTicketChannelName(optionLabel: string, displayName: string, userId: string): string {

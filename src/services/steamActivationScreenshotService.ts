@@ -88,10 +88,11 @@ export function scoreSteamActivationScreenshot(input: {
     (hasUpdateSignal ? 0.45 : 0) +
     (Math.min(folderMatches.length, 3) / 3) * 0.35 +
     (pathMatches.length > 0 ? 0.2 : 0);
+  const roundedScore = Math.round(score * 100);
 
   return {
-    passed: hasUpdateSignal && folderMatches.length >= 2 && pathMatches.length > 0,
-    score: Math.round(score * 100),
+    passed: roundedScore >= 70,
+    score: roundedScore,
     matchedSignals: unique(matchedSignals),
     missingSignals: unique(missingSignals),
     ocrExcerpt: normalizedText.slice(0, 280)

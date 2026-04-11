@@ -180,7 +180,7 @@ describe("TicketService", () => {
     ]);
   });
 
-  it("returns an ephemeral-style denial message when the member lacks the required role", async () => {
+  it("returns an denial message when the member lacks the required role", async () => {
     const result = await service.createFromSelection({
       guildId: "guild-1",
       panelId: "panel-1",
@@ -356,6 +356,7 @@ describe("TicketService", () => {
     });
 
     expect(screenshots.seenUrls).toEqual(["https://example.com/proof.webp"]);
-    expect(gateway.channelMessages.at(-1)?.content).toContain("Ảnh xác minh đã qua kiểm tra sơ bộ.");
+    expect(gateway.channelMessages.at(-2)?.content).toBe("Đang xác minh ảnh...");
+    expect(gateway.channelMessages.at(-1)?.content).toContain("Ảnh hợp lệ");
   });
 });
