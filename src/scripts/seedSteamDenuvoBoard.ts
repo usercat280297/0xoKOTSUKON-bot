@@ -37,6 +37,45 @@ interface SeedGameEntry {
   sortOrder: number;
 }
 
+function parseExplicitTitlesFromArgs(): string[] {
+  const gamesArgument = process.argv.find((argument) => argument.startsWith("--games="));
+  if (!gamesArgument) {
+    return [];
+  }
+
+  return gamesArgument
+    .slice("--games=".length)
+    .split("|")
+    .map((title) => normalizeTitle(title))
+    .filter(Boolean);
+}
+
+function resolveSeedTitles(): { titles: string[]; sourceLabel: string } {
+  const envTitles = (process.env.SEED_GAMES ?? "")
+    .split("|")
+    .map((title) => normalizeTitle(title))
+    .filter(Boolean);
+  if (envTitles.length > 0) {
+    return {
+      titles: [...new Set(envTitles)],
+      sourceLabel: "explicit game list from SEED_GAMES"
+    };
+  }
+
+  const argTitles = parseExplicitTitlesFromArgs();
+  if (argTitles.length > 0) {
+    return {
+      titles: [...new Set(argTitles)],
+      sourceLabel: "explicit game list from --games"
+    };
+  }
+
+  return {
+    titles: [],
+    sourceLabel: "live Steam Denuvo Watch curator"
+  };
+}
+
 function resolveSeedConfig() {
   const env = getBotEnv();
   if (!env.discordGuildId) {
@@ -190,8 +229,11 @@ async function main(): Promise<void> {
   });
 
   try {
-    console.log("Fetching live Denuvo list from Steam...");
-    const titles = await fetchCurrentDenuvoTitles();
+    const requestedTitles = resolveSeedTitles();
+    const titles =
+      requestedTitles.titles.length > 0 ? requestedTitles.titles : await fetchCurrentDenuvoTitles();
+
+    console.log(`Seeding board from ${requestedTitles.sourceLabel}...`);
     const entries = buildSeedEntries(titles);
     const counts = entries.reduce<Record<SectionLabel, number>>(
       (current, entry) => {
