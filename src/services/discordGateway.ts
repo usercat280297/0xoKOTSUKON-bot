@@ -89,6 +89,8 @@ const GAME_ACTIVATION_ICON_URL =
 const GAME_ACTIVATION_IMAGE = "game-steam-1_744287f2722049808217c58c22a3f801.jpg";
 const STEAM_ACTIVATION_TICKET_IMAGE = "sonic-1.webp";
 const STEAM_ACTIVATION_DOWNLOAD_GUIDE_CHANNEL_ID = "1492126197604155487";
+const STEAM_ACTIVATION_SHARE_REVIEW_CHANNEL_ID = "1492126875781431336";
+const STEAM_ACTIVATION_SUPPORT_CHANNEL_ID = "1492119938788229180";
 const ACTIVATION_ARROW_GIF_URL =
   "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExeDhpMzhsYmNyYWF6ZG9pc2VhYzhzdnVzeDlyend2bmdqeG8yaXV6aCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/AfqBN1IcKDbxp0P3ql/giphy.gif";
 const QUICK_DETAIL_FALLBACK = "Not selected yet";
@@ -186,10 +188,10 @@ function buildActivationTokenEmbed(): EmbedBuilder {
         "***LƯU Ý: tải file token kích hoạt, giải nén và dán vào thư mục game trong vòng 20p, nếu không làm token sẽ hết hạn***",
         "",
         "**NẾU CRACK HOẠT ĐỘNG, GỬI ẢNH VÀO**",
-        "#📸┇𝑺𝑯𝑨𝑹𝑬-𝑹𝑬𝑽𝑰𝑬𝑾",
+        `<#${STEAM_ACTIVATION_SHARE_REVIEW_CHANNEL_ID}>`,
         "",
         "**NẾU LỖI, HÃY GỬI ẢNH VÀO**",
-        "#⚠┇𝑺𝑼𝑷𝑷𝑶𝑹𝑻-𝑵𝑯𝑨𝑼",
+        `<#${STEAM_ACTIVATION_SUPPORT_CHANNEL_ID}>`,
         "",
         "***TẢI TOKEN BÊN DƯỚI***"
       ].join("\n")
