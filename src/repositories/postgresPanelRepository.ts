@@ -22,7 +22,8 @@ function mapPanel(row: Record<string, unknown>): TicketPanel {
     messageId: firstMessageId,
     messageIds: firstMessageId && !messageIds.includes(firstMessageId) ? [firstMessageId, ...messageIds] : messageIds,
     placeholder: String(row.placeholder),
-    template: row.template === "game-activation" ? "game-activation" : "default",
+    template:
+      row.template === "game-activation" ? "game-activation" : row.template === "donation" ? "donation" : "default",
     active: Boolean(row.active)
   };
 }
