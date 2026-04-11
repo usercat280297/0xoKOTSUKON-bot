@@ -395,4 +395,42 @@ describe("TicketService", () => {
       }
     ]);
   });
+
+  it("lets admin send the activation token panel inside a steam ticket", async () => {
+    tickets.seedTicket({
+      id: "ticket-steam",
+      guildId: "guild-1",
+      userId: "user-1",
+      channelId: "steam-ticket-channel",
+      optionId: "steam-option-1",
+      status: "open",
+      originalCategoryId: "steam-category",
+      claimedBy: "staff-1",
+      closedBy: null,
+      closedAt: null,
+      transcriptMessageId: null
+    });
+
+    const result = await service.sendActivationTokenByChannel(
+      "steam-ticket-channel",
+      {
+        actorId: "admin-1",
+        actorRoleIds: [],
+        hasManageChannels: true
+      },
+      {
+        name: "token.zip",
+        url: "https://example.com/token.zip"
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(gateway.activationTokenPanels).toEqual([
+      {
+        channelId: "steam-ticket-channel",
+        fileName: "token.zip",
+        fileUrl: "https://example.com/token.zip"
+      }
+    ]);
+  });
 });

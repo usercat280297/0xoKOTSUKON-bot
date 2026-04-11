@@ -213,6 +213,15 @@ async function handleTicketCommand(interaction: ChatInputCommandInteraction, tic
       await replyEphemeral(interaction, result.message);
       return;
     }
+    case "send-token": {
+      const file = interaction.options.getAttachment("file", true);
+      const result = await tickets.sendActivationTokenByChannel(interaction.channelId, actor, {
+        name: file.name,
+        url: file.url
+      });
+      await replyEphemeral(interaction, result.message);
+      return;
+    }
     case "add-member": {
       const memberToAdd = interaction.options.getUser("member", true);
       const result = await tickets.addMember(interaction.channelId, memberToAdd.id, actor);

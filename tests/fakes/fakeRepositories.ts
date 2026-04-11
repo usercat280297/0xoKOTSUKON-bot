@@ -12,7 +12,14 @@ import type {
   TranscriptMessage,
   UpdatePanelOptionStockInput
 } from "../../src/domain/types";
-import type { DiscordTicketGateway, CreateTicketChannelParams, CreateTicketChannelResult, SendLogParams, SendTicketIntroParams } from "../../src/services/discordGateway";
+import type {
+  DiscordTicketGateway,
+  CreateTicketChannelParams,
+  CreateTicketChannelResult,
+  SendActivationTokenPanelParams,
+  SendLogParams,
+  SendTicketIntroParams
+} from "../../src/services/discordGateway";
 import type { SteamActivationScreenshotAnalyzer, SteamActivationScreenshotValidationResult } from "../../src/services/steamActivationScreenshotService";
 import type { GuildConfigRepository, PanelRepository, TicketRepository } from "../../src/repositories/interfaces";
 
@@ -214,6 +221,7 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
   public channelMessages: Array<{ channelId: string; content: string }> = [];
   public verificationPrompts: Array<{ channelId: string; ticketId: string }> = [];
   public verificationActivations: Array<{ channelId: string; ticketId: string; activatedBy: string }> = [];
+  public activationTokenPanels: SendActivationTokenPanelParams[] = [];
   public deletedChannels: string[] = [];
   public movedChannels: Array<{ channelId: string; categoryId: string | null }> = [];
   public requesterPermissions: Array<{ channelId: string; requesterId: string; allowSend: boolean }> = [];
@@ -263,6 +271,10 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
 
   public async markVerificationReadyState(channelId: string, ticketId: string, activatedBy: string): Promise<void> {
     this.verificationActivations.push({ channelId, ticketId, activatedBy });
+  }
+
+  public async sendActivationTokenPanel(params: SendActivationTokenPanelParams): Promise<void> {
+    this.activationTokenPanels.push(params);
   }
 
   public async deleteChannel(channelId: string): Promise<void> {

@@ -127,6 +127,14 @@ const ticketCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) => subcommand.setName("close").setDescription("Close the current ticket"))
   .addSubcommand((subcommand) =>
     subcommand
+      .setName("send-token")
+      .setDescription("Send the activation token panel and file in the current ticket")
+      .addAttachmentOption((option) =>
+        option.setName("file").setDescription("Activation token archive").setRequired(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName("add-member")
       .setDescription("Add a guild member to the current ticket")
       .addUserOption((option) => option.setName("member").setDescription("Member to add").setRequired(true))

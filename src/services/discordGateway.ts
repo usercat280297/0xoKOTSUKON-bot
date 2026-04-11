@@ -47,6 +47,12 @@ export interface SendLogParams {
   transcriptFileName: string;
 }
 
+export interface SendActivationTokenPanelParams {
+  channelId: string;
+  fileName: string;
+  fileUrl: string;
+}
+
 export interface DiscordTicketGateway {
   sendPanelMessage(panel: TicketPanelWithOptions): Promise<string[]>;
   createTicketChannel(params: CreateTicketChannelParams): Promise<CreateTicketChannelResult>;
@@ -56,6 +62,7 @@ export interface DiscordTicketGateway {
   sendChannelMessage(channelId: string, content: string): Promise<void>;
   sendVerificationReadyPrompt(channelId: string, ticketId: string): Promise<void>;
   markVerificationReadyState(channelId: string, ticketId: string, activatedBy: string): Promise<void>;
+  sendActivationTokenPanel(params: SendActivationTokenPanelParams): Promise<void>;
   deleteChannel(channelId: string): Promise<void>;
   addChannelMember(channelId: string, userId: string): Promise<void>;
   removeChannelMember(channelId: string, userId: string): Promise<void>;
@@ -82,6 +89,8 @@ const GAME_ACTIVATION_ICON_URL =
 const GAME_ACTIVATION_IMAGE = "game-steam-1_744287f2722049808217c58c22a3f801.jpg";
 const STEAM_ACTIVATION_TICKET_IMAGE = "sonic-1.webp";
 const STEAM_ACTIVATION_DOWNLOAD_GUIDE_CHANNEL_ID = "1492126197604155487";
+const ACTIVATION_ARROW_GIF_URL =
+  "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExeDhpMzhsYmNyYWF6ZG9pc2VhYzhzdnVzeDlyend2bmdqeG8yaXV6aCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/AfqBN1IcKDbxp0P3ql/giphy.gif";
 const QUICK_DETAIL_FALLBACK = "Not selected yet";
 const MAX_SELECTS_PER_MESSAGE = 2;
 const MAX_OPTIONS_PER_SELECT = 25;
@@ -165,6 +174,27 @@ function buildVerificationReadyEmbed(activated = false): EmbedBuilder {
         ? "Vui lòng đợi 1 chút nhé, admin sẽ vào kích hoạt cho bạn."
         : "Ảnh đã đúng mẫu. Bấm **Kích hoạt** để chuyển sang bước tiếp theo."
     );
+}
+
+function buildActivationTokenEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0x3b82f6)
+    .setTitle("File kích hoạt đã sẵn sàng")
+    .setDescription(
+      [
+        "***SAU KHI NHẬN ĐƯỢC FILE KÍCH HOẠT, HÃY LÀM ĐÚNG HƯỚNG DẪN ĐÃ NÊU***",
+        "***LƯU Ý: tải file token kích hoạt, giải nén và dán vào thư mục game trong vòng 20p, nếu không làm token sẽ hết hạn***",
+        "",
+        "**NẾU CRACK HOẠT ĐỘNG, GỬI ẢNH VÀO**",
+        "#📸┇𝑺𝑯𝑨𝑹𝑬-𝑹𝑬𝑽𝑰𝑬𝑾",
+        "",
+        "**NẾU LỖI, HÃY GỬI ẢNH VÀO**",
+        "#⚠┇𝑺𝑼𝑷𝑷𝑶𝑹𝑻-𝑵𝑯𝑨𝑼",
+        "",
+        "***TẢI TOKEN BÊN DƯỚI***"
+      ].join("\n")
+    )
+    .setThumbnail(ACTIVATION_ARROW_GIF_URL);
 }
 
 function formatStockDescription(option: TicketOption): string {
@@ -483,6 +513,23 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
       content: null,
       embeds: [buildVerificationReadyEmbed(true)],
       components: [buildVerificationReadyRow(ticketId, true)]
+    });
+  }
+
+  public async sendActivationTokenPanel(params: SendActivationTokenPanelParams): Promise<void> {
+    const channel = await this.getTextChannel(params.channelId);
+    const response = await fetch(params.fileUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to download activation token file: ${response.status}`);
+    }
+
+    const file = new AttachmentBuilder(Buffer.from(await response.arrayBuffer()), {
+      name: params.fileName
+    });
+
+    await channel.send({
+      embeds: [buildActivationTokenEmbed()],
+      files: [file]
     });
   }
 

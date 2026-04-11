@@ -37,6 +37,11 @@ export interface IncomingTicketAttachment {
   contentType: string | null;
 }
 
+export interface OutgoingTicketAttachment {
+  name: string;
+  url: string;
+}
+
 export interface IncomingTicketMessage {
   channelId: string;
   authorId: string;
@@ -149,6 +154,14 @@ export class TicketService {
 
   public closeByChannelId(channelId: string, actor: ActorContext): Promise<ServiceResponse> {
     return this.closeResolvedTicket(() => this.tickets.findByChannelId(channelId), actor);
+  }
+
+  public sendActivationTokenByChannel(
+    channelId: string,
+    actor: ActorContext,
+    attachment: OutgoingTicketAttachment
+  ): Promise<ServiceResponse> {
+    return this.sendActivationTokenResolved(() => this.tickets.findByChannelId(channelId), actor, attachment);
   }
 
   public activateByTicketId(ticketId: string, actor: ActorContext): Promise<ServiceResponse> {
@@ -438,6 +451,49 @@ export class TicketService {
     return {
       ok: true,
       message: "Đã chuyển ticket sang bước activation."
+    };
+  }
+
+  private async sendActivationTokenResolved(
+    resolve: () => Promise<Ticket | null>,
+    actor: ActorContext,
+    attachment: OutgoingTicketAttachment
+  ): Promise<ServiceResponse> {
+    const ticket = await resolve();
+    if (!ticket) {
+      return { ok: false, message: "Không tìm thấy ticket." };
+    }
+
+    if (ticket.status !== "open") {
+      return { ok: false, message: "Ticket này đã đóng." };
+    }
+
+    const route = await this.resolveTicketRoute(ticket);
+    if (!route || !this.isSteamActivationPanel(route.panel)) {
+      return { ok: false, message: "Lệnh này chỉ dùng cho ticket Steam Activation." };
+    }
+
+    if (!actor.hasManageChannels) {
+      return { ok: false, message: "Chỉ admin mới được dùng lệnh này." };
+    }
+
+    await this.gateway.sendActivationTokenPanel({
+      channelId: ticket.channelId,
+      fileName: attachment.name,
+      fileUrl: attachment.url
+    });
+    await this.tickets.addEvent({
+      ticketId: ticket.id,
+      actorId: actor.actorId,
+      eventType: "ticket.activation_token_sent",
+      payload: {
+        fileName: attachment.name
+      }
+    });
+
+    return {
+      ok: true,
+      message: "Đã gửi panel kèm file kích hoạt."
     };
   }
 
