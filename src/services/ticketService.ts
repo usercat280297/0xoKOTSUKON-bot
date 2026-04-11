@@ -93,7 +93,7 @@ export class TicketService {
     }
 
     const hours = this.businessHours.getStatus();
-    if (!hours.isOpen) {
+    if (this.isBusinessHoursRestrictedPanel(route.panel) && !hours.isOpen) {
       return {
         ok: false,
         message: `Khung giờ mở ticket là ${hours.windowLabel} (${hours.timezone}) mỗi ngày. Hiện tại là ${hours.currentTimeLabel}, nên bạn chưa thể mở ticket.`
@@ -940,6 +940,10 @@ export class TicketService {
 
   private isSteamActivationPanel(panel: TicketPanelWithOptions): boolean {
     return panel.template === "game-activation" && panel.name.trim().toUpperCase().includes("STEAM ACTIVATION");
+  }
+
+  private isBusinessHoursRestrictedPanel(panel: TicketPanelWithOptions): boolean {
+    return !this.isDonationPanel(panel);
   }
 
   private isDonationPanel(panel: TicketPanelWithOptions): boolean {

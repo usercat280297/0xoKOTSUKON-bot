@@ -290,6 +290,48 @@ describe("TicketService", () => {
     expect(gateway.createdChannels).toHaveLength(0);
   });
 
+  it("allows donation tickets outside the configured hours", async () => {
+    guildConfigs.current = {
+      guildId: "guild-1",
+      logChannelId: null,
+      closedCategoryId: null,
+      donatorRoleId: "donator-role",
+      donationThanksChannelId: "thanks-channel",
+      donationLinkUrl: "https://ko-fi.com/example",
+      donationQrImageUrl: "https://cdn.example.com/qr.png"
+    };
+
+    const serviceOutsideHours = new TicketService(
+      guildConfigs,
+      panels,
+      tickets,
+      gateway,
+      new PermissionService(),
+      new TranscriptService(),
+      new BusinessHoursService(
+        {
+          timezone: "Asia/Bangkok",
+          startHour: 21,
+          endHour: 24
+        },
+        () => new Date("2026-04-10T10:00:00.000Z")
+      ),
+      screenshots
+    );
+
+    const result = await serviceOutsideHours.createFromSelection({
+      guildId: "guild-1",
+      panelId: "panel-donation",
+      optionValue: "donate",
+      userId: "user-1",
+      memberRoleIds: ["verified-role"],
+      displayName: "Alice"
+    });
+
+    expect(result.ok).toBe(true);
+    expect(gateway.createdChannels.at(-1)?.targetCategoryId).toBe("donate-category");
+  });
+
   it("claims and closes a ticket by sending the transcript then deleting the channel", async () => {
     guildConfigs.current = {
       guildId: "guild-1",
