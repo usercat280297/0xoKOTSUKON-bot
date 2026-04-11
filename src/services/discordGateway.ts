@@ -70,7 +70,7 @@ interface PanelMessagePayload {
   content?: string;
   embeds?: EmbedBuilder[];
   files?: AttachmentBuilder[];
-  components: ActionRowBuilder<StringSelectMenuBuilder>[];
+  components: Array<ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>>;
 }
 
 const GAME_ACTIVATION_ICON_URL =
@@ -192,6 +192,15 @@ function readIssueLabelFromContent(content: string): string | null {
 function readClaimedByFromContent(content: string): string | null {
   const match = content.match(/^Claimed by: <@(\d+)>$/m);
   return match?.[1] ?? null;
+}
+
+function buildPanelResetRow(panelId: string): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(ComponentIds.panelReset(panelId))
+      .setLabel("Reset")
+      .setStyle(ButtonStyle.Secondary)
+  );
 }
 
 function toDiscordTimestamp(date: Date): number {
@@ -478,7 +487,7 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
       return [
         {
           content: `**${panel.name}**\nSelect the ticket type you need from the dropdown below.`,
-          components: [row]
+          components: [row, buildPanelResetRow(panel.id)]
         }
       ];
     }
@@ -545,12 +554,12 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
         payloads.push({
           embeds: [embed],
           files: [hero],
-          components: slice
+          components: [...slice, buildPanelResetRow(panel.id)]
         });
       } else {
         payloads.push({
           content: `**${panel.name}** continued`,
-          components: slice
+          components: [...slice, buildPanelResetRow(panel.id)]
         });
       }
     }

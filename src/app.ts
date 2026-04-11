@@ -75,6 +75,7 @@ export function createBotApp(env: BotEnv): BotApp {
 
       if (interaction.isStringSelectMenu()) {
         await handleStringSelectMenuInteraction(interaction, {
+          panels: panelService,
           tickets: ticketService
         });
         return;
@@ -82,6 +83,7 @@ export function createBotApp(env: BotEnv): BotApp {
 
       if (interaction.isButton()) {
         await handleButtonInteraction(interaction, {
+          panels: panelService,
           tickets: ticketService
         });
       }

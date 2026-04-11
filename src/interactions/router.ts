@@ -1,9 +1,11 @@
 import { ButtonInteraction, GuildMember, PermissionFlagsBits, StringSelectMenuInteraction } from "discord.js";
+import { PanelService } from "../services/panelService";
 import { TicketService } from "../services/ticketService";
-import { parsePanelSelectId, parseTicketButton, parseTicketIssueSelectId } from "../utils/componentIds";
+import { parsePanelResetId, parsePanelSelectId, parseTicketButton, parseTicketIssueSelectId } from "../utils/componentIds";
 import { extractDisplayName, extractRoleIds, replyEphemeral } from "../utils/interactions";
 
 export interface InteractionDependencies {
+  panels: PanelService;
   tickets: TicketService;
 }
 
@@ -29,6 +31,9 @@ export async function handleStringSelectMenuInteraction(
     });
 
     await replyEphemeral(interaction, result.message);
+    await dependencies.panels.publishPanel(panelId).catch((error) => {
+      console.error(`Failed to auto-refresh panel ${panelId} after selection.`, error);
+    });
     return;
   }
 
@@ -47,6 +52,13 @@ export async function handleButtonInteraction(
 ): Promise<void> {
   if (!interaction.inGuild()) {
     await replyEphemeral(interaction, "This interaction only works inside a guild.");
+    return;
+  }
+
+  const panelId = parsePanelResetId(interaction.customId);
+  if (panelId) {
+    await interaction.deferUpdate();
+    await dependencies.panels.publishPanel(panelId);
     return;
   }
 
