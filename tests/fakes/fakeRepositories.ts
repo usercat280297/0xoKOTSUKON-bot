@@ -9,7 +9,8 @@ import type {
   TicketOption,
   TicketPanel,
   TicketPanelWithOptions,
-  TranscriptMessage
+  TranscriptMessage,
+  UpdatePanelOptionStockInput
 } from "../../src/domain/types";
 import type { DiscordTicketGateway, CreateTicketChannelParams, CreateTicketChannelResult, SendLogParams, SendTicketIntroParams } from "../../src/services/discordGateway";
 import type { GuildConfigRepository, PanelRepository, TicketRepository } from "../../src/repositories/interfaces";
@@ -68,6 +69,10 @@ export class FakePanelRepository implements PanelRepository {
       value: input.value,
       label: input.label,
       emoji: input.emoji,
+      boardSection: input.boardSection ?? null,
+      stockRemaining: input.stockRemaining ?? null,
+      stockTotal: input.stockTotal ?? null,
+      sortOrder: input.sortOrder ?? 0,
       requiredRoleId: input.requiredRoleId,
       redirectChannelId: input.redirectChannelId,
       targetCategoryId: input.targetCategoryId,
@@ -80,6 +85,17 @@ export class FakePanelRepository implements PanelRepository {
     }
     panel.options.push(option);
     this.options.set(option.id, option);
+    return option;
+  }
+
+  public async updateOptionStock(input: UpdatePanelOptionStockInput): Promise<TicketOption | null> {
+    const option = this.options.get(input.optionId);
+    if (!option) {
+      return null;
+    }
+
+    option.stockRemaining = input.stockRemaining;
+    option.stockTotal = input.stockTotal;
     return option;
   }
 
@@ -187,6 +203,7 @@ export class FakeTicketRepository implements TicketRepository {
 }
 
 export class FakeDiscordGateway implements DiscordTicketGateway {
+  public publishedPanels: Array<{ panelId: string; optionCount: number; messageId: string }> = [];
   public createdChannels: CreateTicketChannelParams[] = [];
   public introMessages: SendTicketIntroParams[] = [];
   public claimUpdates: Array<{ channelId: string; ticketId: string; claimedBy: string }> = [];
@@ -200,7 +217,13 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
   public transcriptMessages: TranscriptMessage[] = [];
 
   public async sendPanelMessage(panel: TicketPanelWithOptions): Promise<string> {
-    return `panel-message-${panel.id}`;
+    const messageId = panel.messageId ?? `panel-message-${panel.id}`;
+    this.publishedPanels.push({
+      panelId: panel.id,
+      optionCount: panel.options.length,
+      messageId
+    });
+    return messageId;
   }
 
   public async createTicketChannel(params: CreateTicketChannelParams): Promise<CreateTicketChannelResult> {

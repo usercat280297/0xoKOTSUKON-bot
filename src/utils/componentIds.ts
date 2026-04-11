@@ -1,5 +1,5 @@
 export const ComponentIds = {
-  panelSelect: (panelId: string) => `ticket-panel:${panelId}`,
+  panelSelect: (panelId: string, scope?: string) => `ticket-panel:${panelId}${scope ? `:${scope}` : ""}`,
   issueSelect: (ticketId: string) => `ticket-issue:${ticketId}`,
   claimButton: (ticketId: string) => `ticket:claim:${ticketId}`,
   closeButton: (ticketId: string) => `ticket:close:${ticketId}`

@@ -27,6 +27,10 @@ CREATE TABLE IF NOT EXISTS ticket_options (
   value TEXT NOT NULL,
   label TEXT NOT NULL,
   emoji TEXT NULL,
+  board_section TEXT NULL,
+  stock_remaining INTEGER NULL,
+  stock_total INTEGER NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
   required_role_id TEXT NOT NULL,
   redirect_channel_id TEXT NOT NULL,
   target_category_id TEXT NOT NULL,
@@ -35,6 +39,21 @@ CREATE TABLE IF NOT EXISTS ticket_options (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(panel_id, value)
 );
+
+ALTER TABLE ticket_options
+  ADD COLUMN IF NOT EXISTS board_section TEXT NULL;
+
+ALTER TABLE ticket_options
+  ADD COLUMN IF NOT EXISTS stock_remaining INTEGER NULL;
+
+ALTER TABLE ticket_options
+  ADD COLUMN IF NOT EXISTS stock_total INTEGER NULL;
+
+ALTER TABLE ticket_options
+  ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;
+
+CREATE INDEX IF NOT EXISTS ticket_options_panel_sort_idx
+  ON ticket_options(panel_id, sort_order, created_at);
 
 CREATE TABLE IF NOT EXISTS tickets (
   id TEXT PRIMARY KEY,

@@ -13,8 +13,9 @@ import {
 } from "discord.js";
 import { join } from "node:path";
 import { ticketIssueCatalog } from "../config/ticketIssueCatalog";
-import type { TicketPanelWithOptions, TranscriptMessage } from "../domain/types";
+import type { TicketOption, TicketPanelWithOptions, TranscriptMessage } from "../domain/types";
 import { ComponentIds } from "../utils/componentIds";
+import { slugifyTicketName } from "../utils/formatters";
 
 export interface CreateTicketChannelParams {
   guildId: string;
@@ -58,10 +59,25 @@ export interface DiscordTicketGateway {
   channelMention(channelId: string): string;
 }
 
+interface GameBoardSection {
+  label: string;
+  scope: string;
+  options: TicketOption[];
+}
+
+interface PanelMessagePayload {
+  content?: string;
+  embeds?: EmbedBuilder[];
+  files?: AttachmentBuilder[];
+  components: ActionRowBuilder<StringSelectMenuBuilder>[];
+}
+
 const GAME_ACTIVATION_ICON_URL =
   "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGlsaGxqOGY5Y2d2aXV0dnJzNzdodGtzdW9taGg1cmF6cmc2NXhqcCZlcD12MV9zdGlja2Vyc19zZWFyY2gmY3Q9cw/VeTIkcoBeync63rDWy/giphy.gif";
 const GAME_ACTIVATION_IMAGE = "game-steam-1_744287f2722049808217c58c22a3f801.jpg";
-const QUICK_DETAIL_FALLBACK = "Chưa chọn";
+const QUICK_DETAIL_FALLBACK = "Not selected yet";
+const MAX_SELECTS_PER_MESSAGE = 5;
+const MAX_OPTIONS_PER_SELECT = 25;
 
 function buildTicketControlContent(
   requesterId: string,
@@ -77,7 +93,7 @@ function buildTicketControlContent(
     `Quick detail: **${issueLabel ?? QUICK_DETAIL_FALLBACK}**`,
     `Claimed by: ${claimedBy ? `<@${claimedBy}>` : "Unclaimed"}`,
     "",
-    "Chọn mô tả nhanh ở dropdown bên dưới rồi nhắn trực tiếp trong ticket này để staff xử lý nhanh hơn."
+    "Pick a quick issue summary from the dropdown below, then continue chatting directly in this ticket."
   ].join("\n");
 }
 
@@ -85,7 +101,7 @@ function buildTicketIssueRow(ticketId: string, selectedIssueValue?: string): Act
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(ComponentIds.issueSelect(ticketId))
-      .setPlaceholder("Chọn mô tả nhanh vấn đề của bạn")
+      .setPlaceholder("Select a quick issue summary")
       .addOptions(
         ticketIssueCatalog.map((issue) => ({
           label: issue.label,
@@ -106,6 +122,52 @@ function buildTicketActionRow(ticketId: string, isClaimed: boolean): ActionRowBu
       .setDisabled(isClaimed),
     new ButtonBuilder().setCustomId(ComponentIds.closeButton(ticketId)).setLabel("Close").setStyle(ButtonStyle.Danger)
   );
+}
+
+function formatStockDescription(option: TicketOption): string {
+  if (option.stockRemaining === null || option.stockTotal === null) {
+    if (option.stockRemaining !== null) {
+      return `${option.stockRemaining} remaining`;
+    }
+
+    return "Open a ticket for this game";
+  }
+
+  if (option.stockTotal === 0) {
+    return "0 of 0 remaining (0%)";
+  }
+
+  const percentage = Math.round((option.stockRemaining / option.stockTotal) * 100);
+  return `${option.stockRemaining} of ${option.stockTotal} remaining (${percentage}%)`;
+}
+
+function buildGameBoardSections(panel: TicketPanelWithOptions): GameBoardSection[] {
+  const activeOptions = panel.options
+    .filter((option) => option.active)
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.label.localeCompare(right.label));
+  const grouped = new Map<string, TicketOption[]>();
+
+  for (const option of activeOptions) {
+    const groupLabel = option.boardSection?.trim() || "Game Requests";
+    const current = grouped.get(groupLabel) ?? [];
+    current.push(option);
+    grouped.set(groupLabel, current);
+  }
+
+  const sections: GameBoardSection[] = [];
+  for (const [label, options] of grouped.entries()) {
+    const chunkCount = Math.ceil(options.length / MAX_OPTIONS_PER_SELECT);
+
+    for (let index = 0; index < chunkCount; index += 1) {
+      sections.push({
+        label: chunkCount > 1 ? `${label} (${index + 1}/${chunkCount})` : label,
+        scope: `${slugifyTicketName(label) || "games"}${chunkCount > 1 ? `-${index + 1}` : ""}`,
+        options: options.slice(index * MAX_OPTIONS_PER_SELECT, (index + 1) * MAX_OPTIONS_PER_SELECT)
+      });
+    }
+  }
+
+  return sections;
 }
 
 function rowContainsCustomId(row: unknown, customId: string): boolean {
@@ -136,24 +198,19 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
 
   public async sendPanelMessage(panel: TicketPanelWithOptions): Promise<string> {
     const channel = await this.getTextChannel(panel.channelId);
-    const menu = new StringSelectMenuBuilder()
-      .setCustomId(ComponentIds.panelSelect(panel.id))
-      .setPlaceholder(panel.placeholder)
-      .addOptions(
-        panel.options
-          .filter((option) => option.active)
-          .map((option) => ({
-            label: option.label,
-            value: option.value,
-            emoji: option.emoji ?? undefined,
-            description: `Route to <@&${option.staffRoleId}>`
-          }))
-      );
+    const payload = this.buildPanelMessage(panel);
 
-    const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
-    const payload = this.buildPanelMessage(panel, row);
+    if (panel.messageId) {
+      try {
+        const existingMessage = await channel.messages.fetch(panel.messageId);
+        await existingMessage.edit(payload);
+        return existingMessage.id;
+      } catch {
+        // Fall back to creating a new message if the old one no longer exists.
+      }
+    }
+
     const message = await channel.send(payload);
-
     return message.id;
   }
 
@@ -349,48 +406,88 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     return `${content}\n${replacement}`;
   }
 
-  private buildPanelMessage(
-    panel: TicketPanelWithOptions,
-    row: ActionRowBuilder<StringSelectMenuBuilder>
-  ): {
-    content?: string;
-    embeds?: EmbedBuilder[];
-    files?: AttachmentBuilder[];
-    components: [ActionRowBuilder<StringSelectMenuBuilder>];
-  } {
-    if (panel.template === "game-activation") {
-      const hero = new AttachmentBuilder(join(process.cwd(), "src/assets", GAME_ACTIVATION_IMAGE), {
-        name: GAME_ACTIVATION_IMAGE
-      });
-      const embed = new EmbedBuilder()
-        .setColor(0x1b2838)
-        .setAuthor({
-          name: panel.name,
-          iconURL: GAME_ACTIVATION_ICON_URL
-        })
-        .setTitle("Kích Hoạt Trò Chơi")
-        .setDescription(
-          [
-            "Chọn đúng danh mục ở menu bên dưới để mở ticket kích hoạt game.",
-            "Bot sẽ kiểm tra role của bạn trước khi tạo kênh riêng cho đúng đội hỗ trợ.",
-            "Nếu chưa đủ role, bạn sẽ nhận hướng dẫn riêng để quay lại mở ticket sau."
-          ].join("\n\n")
-        )
-        .setImage(`attachment://${GAME_ACTIVATION_IMAGE}`)
-        .setFooter({
-          text: "0xoKITSU Ticket Support"
-        });
+  private buildPanelMessage(panel: TicketPanelWithOptions): PanelMessagePayload {
+    const activeOptions = panel.options.filter((option) => option.active);
+    if (activeOptions.length === 0) {
+      throw new Error("Panel has no active options.");
+    }
+
+    if (panel.template !== "game-activation") {
+      const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(ComponentIds.panelSelect(panel.id))
+          .setPlaceholder(panel.placeholder)
+          .addOptions(
+            activeOptions.map((option) => ({
+              label: option.label,
+              value: option.value,
+              emoji: option.emoji ?? undefined,
+              description: `Route to <@&${option.staffRoleId}>`
+            }))
+          )
+      );
 
       return {
-        embeds: [embed],
-        files: [hero],
+        content: `**${panel.name}**\nSelect the ticket type you need from the dropdown below.`,
         components: [row]
       };
     }
 
+    const hero = new AttachmentBuilder(join(process.cwd(), "src/assets", GAME_ACTIVATION_IMAGE), {
+      name: GAME_ACTIVATION_IMAGE
+    });
+    const sections = buildGameBoardSections(panel);
+    if (sections.length > MAX_SELECTS_PER_MESSAGE) {
+      throw new Error(
+        `This panel needs ${sections.length} dropdowns, but Discord only allows ${MAX_SELECTS_PER_MESSAGE} select menus per message. Split the board into fewer sections.`
+      );
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0x1b2838)
+      .setAuthor({
+        name: panel.name,
+        iconURL: GAME_ACTIVATION_ICON_URL
+      })
+      .setTitle("Steam Activation Request Board")
+      .setDescription(
+        [
+          "Panels open only when your access role is valid and the daily window is open.",
+          "",
+          "**Before You Start**",
+          "• Pick the exact game from the correct menu below.",
+          "• Check the visible stock line before opening a ticket.",
+          "• Use the in-ticket quick detail menu after the ticket is created.",
+          "",
+          "**How To Request**",
+          "• Select your game from one of the dropdown menus below.",
+          "• The bot creates a private ticket in the mapped staff route.",
+          "• Continue chatting directly inside that ticket."
+        ].join("\n")
+      )
+      .setImage(`attachment://${GAME_ACTIVATION_IMAGE}`)
+      .setFooter({
+        text: "0xoKITSU Ticket Support"
+      });
+
     return {
-      content: `**${panel.name}**\nSelect the ticket type you need from the dropdown below.`,
-      components: [row]
+      embeds: [embed],
+      files: [hero],
+      components: sections.map((section) =>
+        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(ComponentIds.panelSelect(panel.id, section.scope))
+            .setPlaceholder(section.label)
+            .addOptions(
+              section.options.map((option) => ({
+                label: option.label,
+                value: option.value,
+                emoji: option.emoji ?? undefined,
+                description: formatStockDescription(option)
+              }))
+            )
+        )
+      )
     };
   }
 }

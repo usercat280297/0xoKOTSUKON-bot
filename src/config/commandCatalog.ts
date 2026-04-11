@@ -52,6 +52,48 @@ const panelCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName("add-game")
+      .setDescription("Add a game entry with stock to a game-activation panel")
+      .addStringOption((option) => option.setName("panel-id").setDescription("Panel id").setRequired(true))
+      .addStringOption((option) => option.setName("label").setDescription("Game title shown to users").setRequired(true))
+      .addStringOption((option) => option.setName("section").setDescription("Dropdown section label, e.g. Steam (A-L)").setRequired(true))
+      .addIntegerOption((option) => option.setName("stock-remaining").setDescription("Current available stock").setRequired(true).setMinValue(0))
+      .addIntegerOption((option) => option.setName("stock-total").setDescription("Total stock capacity").setRequired(true).setMinValue(0))
+      .addRoleOption((option) => option.setName("required-role").setDescription("Role required to open the ticket").setRequired(true))
+      .addChannelOption((option) =>
+        option
+          .setName("redirect-channel")
+          .setDescription("Role selection channel shown when access is denied")
+          .addChannelTypes(ChannelType.GuildText)
+          .setRequired(true)
+      )
+      .addChannelOption((option) =>
+        option
+          .setName("target-category")
+          .setDescription("Category where the ticket channel will be created")
+          .addChannelTypes(ChannelType.GuildCategory)
+          .setRequired(true)
+      )
+      .addRoleOption((option) => option.setName("staff-role").setDescription("Staff role that handles this route").setRequired(true))
+      .addStringOption((option) => option.setName("emoji").setDescription("Optional emoji for the dropdown option"))
+      .addIntegerOption((option) => option.setName("sort-order").setDescription("Optional display order override").setMinValue(0))
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("update-stock")
+      .setDescription("Update stock for a game already attached to a panel")
+      .addStringOption((option) => option.setName("panel-id").setDescription("Panel id").setRequired(true))
+      .addStringOption((option) =>
+        option
+          .setName("game")
+          .setDescription("Game value, option id, or exact label previously added to this panel")
+          .setRequired(true)
+      )
+      .addIntegerOption((option) => option.setName("stock-remaining").setDescription("Current available stock").setRequired(true).setMinValue(0))
+      .addIntegerOption((option) => option.setName("stock-total").setDescription("Optional new total stock").setMinValue(0))
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName("publish")
       .setDescription("Publish the panel dropdown message")
       .addStringOption((option) => option.setName("panel-id").setDescription("Panel id").setRequired(true))

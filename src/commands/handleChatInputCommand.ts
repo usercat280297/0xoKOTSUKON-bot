@@ -35,6 +35,7 @@ export async function handleChatInputCommand(
 }
 
 async function handlePanelCommand(interaction: ChatInputCommandInteraction, panels: PanelService): Promise<void> {
+  const guildId = interaction.guildId!;
   const subcommand = interaction.options.getSubcommand(true);
 
   try {
@@ -49,7 +50,7 @@ async function handlePanelCommand(interaction: ChatInputCommandInteraction, pane
         }
 
         const panel = await panels.createPanel({
-          guildId: interaction.guildId!,
+          guildId,
           name,
           channelId: channel.id,
           placeholder,
@@ -82,6 +83,61 @@ async function handlePanelCommand(interaction: ChatInputCommandInteraction, pane
         await replyEphemeral(interaction, `Panel option added.\nOption ID: \`${option.id}\``);
         return;
       }
+      case "add-game": {
+        const targetCategory = interaction.options.getChannel("target-category", true);
+        const redirectChannel = interaction.options.getChannel("redirect-channel", true);
+        if (targetCategory.type !== ChannelType.GuildCategory) {
+          throw new Error("Target category must be a category channel.");
+        }
+        if (redirectChannel.type !== ChannelType.GuildText) {
+          throw new Error("Redirect channel must be a text channel.");
+        }
+
+        const result = await panels.addGame({
+          panelId: interaction.options.getString("panel-id", true),
+          label: interaction.options.getString("label", true),
+          section: interaction.options.getString("section", true),
+          stockRemaining: interaction.options.getInteger("stock-remaining", true),
+          stockTotal: interaction.options.getInteger("stock-total", true),
+          emoji: interaction.options.getString("emoji"),
+          requiredRoleId: interaction.options.getRole("required-role", true).id,
+          redirectChannelId: redirectChannel.id,
+          targetCategoryId: targetCategory.id,
+          staffRoleId: interaction.options.getRole("staff-role", true).id,
+          sortOrder: interaction.options.getInteger("sort-order")
+        });
+
+        await replyEphemeral(
+          interaction,
+          [
+            "Game added to panel.",
+            `Option ID: \`${result.option.id}\``,
+            `Value: \`${result.option.value}\``,
+            `Stock: ${result.option.stockRemaining ?? 0}/${result.option.stockTotal ?? "?"}`,
+            result.refreshed ? "Board message refreshed." : "Board not published yet. Use /panel publish when ready."
+          ].join("\n")
+        );
+        return;
+      }
+      case "update-stock": {
+        const result = await panels.updateGameStock({
+          panelId: interaction.options.getString("panel-id", true),
+          gameReference: interaction.options.getString("game", true),
+          stockRemaining: interaction.options.getInteger("stock-remaining", true),
+          stockTotal: interaction.options.getInteger("stock-total")
+        });
+
+        await replyEphemeral(
+          interaction,
+          [
+            `Stock updated for **${result.option.label}**.`,
+            `Value: \`${result.option.value}\``,
+            `Stock: ${result.option.stockRemaining ?? 0}/${result.option.stockTotal ?? "?"}`,
+            result.refreshed ? "Board message refreshed." : "Board not published yet. Use /panel publish if you want to post it."
+          ].join("\n")
+        );
+        return;
+      }
       case "publish": {
         const panel = await panels.publishPanel(interaction.options.getString("panel-id", true));
         await replyEphemeral(
@@ -91,7 +147,7 @@ async function handlePanelCommand(interaction: ChatInputCommandInteraction, pane
         return;
       }
       case "list": {
-        const content = await panels.renderPanelList(interaction.guildId!);
+        const content = await panels.renderPanelList(guildId);
         await replyEphemeral(interaction, content);
         return;
       }
@@ -112,6 +168,7 @@ async function handleConfigCommand(
   interaction: ChatInputCommandInteraction,
   guildConfigs: GuildConfigRepository
 ): Promise<void> {
+  const guildId = interaction.guildId!;
   const subcommand = interaction.options.getSubcommand(true);
 
   switch (subcommand) {
@@ -122,17 +179,10 @@ async function handleConfigCommand(
         return;
       }
 
-      await guildConfigs.upsert(interaction.guildId!, {
+      await guildConfigs.upsert(guildId, {
         logChannelId: channel.id
       });
       await replyEphemeral(interaction, `Log channel set to <#${channel.id}>.`);
-      return;
-    }
-    case "set-closed-category": {
-      await replyEphemeral(
-        interaction,
-        "Bot hiện đang được cấu hình theo kiểu đóng ticket là xóa hẳn kênh, nên closed category không còn được dùng nữa."
-      );
       return;
     }
     default:
@@ -160,11 +210,6 @@ async function handleTicketCommand(interaction: ChatInputCommandInteraction, tic
         await interaction.deferReply({ ephemeral: true });
       }
       const result = await tickets.closeByChannelId(interaction.channelId, actor);
-      await replyEphemeral(interaction, result.message);
-      return;
-    }
-    case "reopen": {
-      const result = await tickets.reopenByChannelId(interaction.channelId, actor);
       await replyEphemeral(interaction, result.message);
       return;
     }

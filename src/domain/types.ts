@@ -24,6 +24,10 @@ export interface TicketOption {
   value: string;
   label: string;
   emoji: string | null;
+  boardSection: string | null;
+  stockRemaining: number | null;
+  stockTotal: number | null;
+  sortOrder: number;
   requiredRoleId: string;
   redirectChannelId: string;
   targetCategoryId: string;
@@ -71,10 +75,20 @@ export interface AddPanelOptionInput {
   value: string;
   label: string;
   emoji: string | null;
+  boardSection?: string | null;
+  stockRemaining?: number | null;
+  stockTotal?: number | null;
+  sortOrder?: number | null;
   requiredRoleId: string;
   redirectChannelId: string;
   targetCategoryId: string;
   staffRoleId: string;
+}
+
+export interface UpdatePanelOptionStockInput {
+  optionId: string;
+  stockRemaining: number;
+  stockTotal: number | null;
 }
 
 export interface CreateTicketInput {

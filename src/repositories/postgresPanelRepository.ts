@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { type Pool } from "pg";
-import type { AddPanelOptionInput, CreatePanelInput, TicketOption, TicketPanel, TicketPanelWithOptions } from "../domain/types";
+import type {
+  AddPanelOptionInput,
+  CreatePanelInput,
+  TicketOption,
+  TicketPanel,
+  TicketPanelWithOptions,
+  UpdatePanelOptionStockInput
+} from "../domain/types";
 import type { PanelRepository } from "./interfaces";
 
 function mapPanel(row: Record<string, unknown>): TicketPanel {
@@ -23,6 +30,10 @@ function mapOption(row: Record<string, unknown>): TicketOption {
     value: String(row.value),
     label: String(row.label),
     emoji: row.emoji ? String(row.emoji) : null,
+    boardSection: row.board_section ? String(row.board_section) : null,
+    stockRemaining: typeof row.stock_remaining === "number" ? row.stock_remaining : row.stock_remaining === null ? null : Number(row.stock_remaining),
+    stockTotal: typeof row.stock_total === "number" ? row.stock_total : row.stock_total === null ? null : Number(row.stock_total),
+    sortOrder: Number(row.sort_order ?? 0),
     requiredRoleId: String(row.required_role_id),
     redirectChannelId: String(row.redirect_channel_id),
     targetCategoryId: String(row.target_category_id),
@@ -58,19 +69,27 @@ export class PostgresPanelRepository implements PanelRepository {
           value,
           label,
           emoji,
+          board_section,
+          stock_remaining,
+          stock_total,
+          sort_order,
           required_role_id,
           redirect_channel_id,
           target_category_id,
           staff_role_id,
           active
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, TRUE)
         RETURNING
           id,
           panel_id,
           value,
           label,
           emoji,
+          board_section,
+          stock_remaining,
+          stock_total,
+          sort_order,
           required_role_id,
           redirect_channel_id,
           target_category_id,
@@ -83,6 +102,10 @@ export class PostgresPanelRepository implements PanelRepository {
         input.value,
         input.label,
         input.emoji,
+        input.boardSection ?? null,
+        input.stockRemaining ?? null,
+        input.stockTotal ?? null,
+        input.sortOrder ?? 0,
         input.requiredRoleId,
         input.redirectChannelId,
         input.targetCategoryId,
@@ -91,6 +114,36 @@ export class PostgresPanelRepository implements PanelRepository {
     );
 
     return mapOption(result.rows[0]);
+  }
+
+  public async updateOptionStock(input: UpdatePanelOptionStockInput): Promise<TicketOption | null> {
+    const result = await this.pool.query(
+      `
+        UPDATE ticket_options
+        SET
+          stock_remaining = $2,
+          stock_total = $3
+        WHERE id = $1
+        RETURNING
+          id,
+          panel_id,
+          value,
+          label,
+          emoji,
+          board_section,
+          stock_remaining,
+          stock_total,
+          sort_order,
+          required_role_id,
+          redirect_channel_id,
+          target_category_id,
+          staff_role_id,
+          active
+      `,
+      [input.optionId, input.stockRemaining, input.stockTotal]
+    );
+
+    return result.rowCount === 0 ? null : mapOption(result.rows[0]);
   }
 
   public async getById(panelId: string): Promise<TicketPanelWithOptions | null> {
@@ -111,6 +164,10 @@ export class PostgresPanelRepository implements PanelRepository {
           value,
           label,
           emoji,
+          board_section,
+          stock_remaining,
+          stock_total,
+          sort_order,
           required_role_id,
           redirect_channel_id,
           target_category_id,
@@ -118,7 +175,7 @@ export class PostgresPanelRepository implements PanelRepository {
           active
         FROM ticket_options
         WHERE panel_id = $1
-        ORDER BY created_at ASC
+        ORDER BY sort_order ASC, created_at ASC
       `,
       [panelId]
     );
@@ -138,6 +195,10 @@ export class PostgresPanelRepository implements PanelRepository {
           value,
           label,
           emoji,
+          board_section,
+          stock_remaining,
+          stock_total,
+          sort_order,
           required_role_id,
           redirect_channel_id,
           target_category_id,
@@ -172,6 +233,10 @@ export class PostgresPanelRepository implements PanelRepository {
           value,
           label,
           emoji,
+          board_section,
+          stock_remaining,
+          stock_total,
+          sort_order,
           required_role_id,
           redirect_channel_id,
           target_category_id,
@@ -179,7 +244,7 @@ export class PostgresPanelRepository implements PanelRepository {
           active
         FROM ticket_options
         WHERE panel_id = ANY($1::text[])
-        ORDER BY created_at ASC
+        ORDER BY sort_order ASC, created_at ASC
       `,
       [panelIds]
     );

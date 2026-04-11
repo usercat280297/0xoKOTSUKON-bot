@@ -7,7 +7,8 @@ import type {
   TicketEvent,
   TicketOption,
   TicketPanel,
-  TicketPanelWithOptions
+  TicketPanelWithOptions,
+  UpdatePanelOptionStockInput
 } from "../domain/types";
 
 export interface GuildConfigRepository {
@@ -21,6 +22,7 @@ export interface GuildConfigRepository {
 export interface PanelRepository {
   create(input: CreatePanelInput): Promise<TicketPanel>;
   addOption(input: AddPanelOptionInput): Promise<TicketOption>;
+  updateOptionStock(input: UpdatePanelOptionStockInput): Promise<TicketOption | null>;
   getById(panelId: string): Promise<TicketPanelWithOptions | null>;
   getOptionById(optionId: string): Promise<TicketOption | null>;
   listByGuildId(guildId: string): Promise<TicketPanelWithOptions[]>;
