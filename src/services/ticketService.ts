@@ -108,6 +108,7 @@ export class TicketService {
       ticketId: ticket.id,
       requesterId: input.userId,
       panelName: route.panel.name,
+      panelTemplate: route.panel.template,
       optionLabel: route.option.label
     });
 

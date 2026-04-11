@@ -13,7 +13,7 @@ import {
 } from "discord.js";
 import { join } from "node:path";
 import { ticketIssueCatalog } from "../config/ticketIssueCatalog";
-import type { TicketOption, TicketPanelWithOptions, TranscriptMessage } from "../domain/types";
+import type { PanelTemplate, TicketOption, TicketPanelWithOptions, TranscriptMessage } from "../domain/types";
 import type { BusinessHoursService } from "./businessHoursService";
 import { ComponentIds } from "../utils/componentIds";
 import { slugifyTicketName } from "../utils/formatters";
@@ -36,6 +36,7 @@ export interface SendTicketIntroParams {
   ticketId: string;
   requesterId: string;
   panelName: string;
+  panelTemplate: PanelTemplate;
   optionLabel: string;
 }
 
@@ -76,6 +77,8 @@ interface PanelMessagePayload {
 const GAME_ACTIVATION_ICON_URL =
   "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGlsaGxqOGY5Y2d2aXV0dnJzNzdodGtzdW9taGg1cmF6cmc2NXhqcCZlcD12MV9zdGlja2Vyc19zZWFyY2gmY3Q9cw/VeTIkcoBeync63rDWy/giphy.gif";
 const GAME_ACTIVATION_IMAGE = "game-steam-1_744287f2722049808217c58c22a3f801.jpg";
+const STEAM_ACTIVATION_TICKET_IMAGE = "sonic-1.webp";
+const STEAM_ACTIVATION_DOWNLOAD_GUIDE_CHANNEL_ID = "1492126197604155487";
 const QUICK_DETAIL_FALLBACK = "Not selected yet";
 const MAX_SELECTS_PER_MESSAGE = 2;
 const MAX_OPTIONS_PER_SELECT = 25;
@@ -232,6 +235,30 @@ function buildCountdownLines(
   ];
 }
 
+function isSteamActivationTicket(panelName: string, panelTemplate: PanelTemplate): boolean {
+  return panelTemplate === "game-activation" && panelName.trim().toUpperCase().includes("STEAM ACTIVATION");
+}
+
+function buildSteamActivationTicketEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0x8b5cf6)
+    .setTitle("Lưu ý trước khi kích hoạt Denuvo")
+    .setDescription(
+      [
+        "**TRƯỚC KHI CÁC BẠN KÍCH HOẠT DENUVO, HÃY ĐẢM BẢO RẰNG PHẢI TUÂN THỦ CÁC ĐIỀU LUẬT DƯỚI ĐÂY**",
+        "",
+        "• tuyệt đối không bao giờ được chạy game từ steam, hãy chạy bằng exe trong thư mục game",
+        "• hãy đảm bảo window update đang disable",
+        "• không update game",
+        "• không chịu trách nhiệm cho mọi bản mod hay ngữ hóa chứa dll dưới mọi hình thức. Nếu có, hãy việt hoá hay mod trước đó rồi crack sau.",
+        `• TRƯỚC TIÊN, HÃY TẢI GAME CLEAN TỪ <#${STEAM_ACTIVATION_DOWNLOAD_GUIDE_CHANNEL_ID}> (NẾU TẢI TỪ STEAMTOOL RỒI THÌ KHÔNG CẦN NỮA) HÃY ĐỌC KĨ TRONG ĐẤY, RỒI CHỤP LẠI ẢNH MÀN HÌNH Y HỆT THẾ NÀY`,
+        "",
+        "Sau khi gửi ảnh xong, tiếp tục chọn quick detail bên dưới rồi chat trực tiếp trong ticket."
+      ].join("\n")
+    )
+    .setImage(`attachment://${STEAM_ACTIVATION_TICKET_IMAGE}`);
+}
+
 export class DiscordJsTicketGateway implements DiscordTicketGateway {
   public constructor(
     private readonly client: Client,
@@ -322,8 +349,22 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
 
   public async sendTicketIntro(params: SendTicketIntroParams): Promise<string> {
     const channel = await this.getTextChannel(params.channelId);
+    const embeds: EmbedBuilder[] = [];
+    const files: AttachmentBuilder[] = [];
+
+    if (isSteamActivationTicket(params.panelName, params.panelTemplate)) {
+      embeds.push(buildSteamActivationTicketEmbed());
+      files.push(
+        new AttachmentBuilder(join(process.cwd(), STEAM_ACTIVATION_TICKET_IMAGE), {
+          name: STEAM_ACTIVATION_TICKET_IMAGE
+        })
+      );
+    }
+
     const message = await channel.send({
       content: buildTicketControlContent(params.requesterId, params.panelName, params.optionLabel),
+      embeds,
+      files,
       components: [buildTicketIssueRow(params.ticketId), buildTicketActionRow(params.ticketId, false)]
     });
 
@@ -341,6 +382,7 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
 
     await target.edit({
       content: this.replaceContentLine(target.content, /^Claimed by: .*$/m, `Claimed by: <@${claimedBy}>`),
+      embeds: target.embeds.map((embed) => EmbedBuilder.from(embed)),
       components: [buildTicketIssueRow(ticketId, selectedIssueValue), buildTicketActionRow(ticketId, true)]
     });
   }
@@ -353,6 +395,7 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
 
     await target.edit({
       content: this.replaceContentLine(target.content, /^Quick detail: \*\*.*\*\*$/m, `Quick detail: **${issueLabel}**`),
+      embeds: target.embeds.map((embed) => EmbedBuilder.from(embed)),
       components: [buildTicketIssueRow(ticketId, issueValue), buildTicketActionRow(ticketId, Boolean(readClaimedByFromContent(target.content)))]
     });
   }
