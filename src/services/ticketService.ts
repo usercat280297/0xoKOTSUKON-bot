@@ -215,7 +215,7 @@ export class TicketService {
     if (!ticket.claimedBy) {
       await this.gateway.sendChannelMessage(
         input.channelId,
-        `<@${input.authorId}> đợi staff claim ticket trước rồi hãy gửi lại ảnh xác minh nhé.`
+        "Ticket này chưa được staff nhận. Chờ staff nhận rồi gửi lại ảnh nhé."
       );
       return;
     }
@@ -245,10 +245,7 @@ export class TicketService {
       console.error("Failed to validate Steam activation screenshot.", error);
       await this.gateway.sendChannelMessage(
         input.channelId,
-        [
-          `<@${input.authorId}> bot chưa đọc được ảnh này.`,
-          "Hãy gửi lại ảnh rõ hơn, chụp trọn cửa sổ Windows Update Blocker và cửa sổ properties của thư mục game."
-        ].join("\n")
+        "Mình chưa đọc được ảnh này. Gửi lại ảnh rõ hơn giúp mình nhé."
       );
     }
   }
@@ -336,11 +333,7 @@ export class TicketService {
     if (this.isSteamActivationPanel(route.panel)) {
       await this.gateway.sendChannelMessage(
         updated.channelId,
-        [
-          `<@${updated.userId}> staff đã claim ticket này.`,
-          "Hãy gửi 1 ảnh màn hình giống mẫu bot đã gửi trong ticket.",
-          "Bot sẽ kiểm tra sơ bộ các dấu hiệu như Windows Update Blocker, dấu X đỏ và cửa sổ properties của thư mục game trong SteamLibrary/steamapps/common."
-        ].join("\n")
+        "Đã nhận ticket, gửi 1 ảnh màn hình giống mẫu bot đã ghim trong ticket để mình kiểm tra tiếp."
       );
     }
 
@@ -518,7 +511,7 @@ export class TicketService {
       return `Ảnh hợp lệ, độ khớp **${result.score}%**.`;
     }
 
-    return "ảnh sai hoặc chưa đúng so với ảnh mẫu, xin vui lòng gửi lại ảnh";
+    return "Ảnh chưa đúng mẫu, vui lòng gửi lại ảnh.";
   }
 
   private buildTicketChannelName(optionLabel: string, displayName: string, userId: string): string {

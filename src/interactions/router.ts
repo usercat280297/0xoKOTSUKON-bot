@@ -81,6 +81,11 @@ export async function handleButtonInteraction(
         ? await dependencies.tickets.activateByTicketId(parsed.ticketId, actor)
       : await closeFromButton(interaction, dependencies.tickets, parsed.ticketId, actor);
 
+  if (result.ok && (parsed.action === "claim" || parsed.action === "activate")) {
+    await interaction.deferUpdate();
+    return;
+  }
+
   await replyEphemeral(interaction, result.message);
 }
 

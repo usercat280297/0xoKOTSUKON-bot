@@ -106,17 +106,15 @@ function buildDefaultTicketControlContent(
 
 function buildSteamActivationTicketControlContent(
   requesterId: string,
-  panelName: string,
   optionLabel: string,
   claimedBy?: string
 ): string {
   return [
-    `Ticket requester: <@${requesterId}>`,
-    `Panel: **${panelName}**`,
-    `Type: **${optionLabel}**`,
-    `Claimed by: ${claimedBy ? `<@${claimedBy}>` : "Unclaimed"}`,
+    `**${optionLabel}**`,
+    `Người mở: <@${requesterId}>`,
+    claimedBy ? `Staff: <@${claimedBy}>` : "Staff: đang chờ nhận ticket",
     "",
-    "Staff sẽ claim ticket trước. Sau đó user gửi ảnh màn hình giống mẫu để bot kiểm tra sơ bộ."
+    claimedBy ? "Tiếp theo: gửi 1 ảnh giống mẫu bên dưới." : "Tiếp theo: chờ staff nhận ticket."
   ].join("\n");
 }
 
@@ -124,7 +122,7 @@ function buildTicketIssueRow(ticketId: string, selectedIssueValue?: string): Act
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(ComponentIds.issueSelect(ticketId))
-      .setPlaceholder("Select a quick issue summary")
+      .setPlaceholder("Chọn mô tả nhanh")
       .addOptions(
         ticketIssueCatalog.map((issue) => ({
           label: issue.label,
@@ -140,10 +138,10 @@ function buildTicketActionRow(ticketId: string, isClaimed: boolean): ActionRowBu
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(ComponentIds.claimButton(ticketId))
-      .setLabel(isClaimed ? "Claimed" : "Claim")
+      .setLabel(isClaimed ? "Đã nhận" : "Nhận ticket")
       .setStyle(ButtonStyle.Primary)
       .setDisabled(isClaimed),
-    new ButtonBuilder().setCustomId(ComponentIds.closeButton(ticketId)).setLabel("Close").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(ComponentIds.closeButton(ticketId)).setLabel("Đóng").setStyle(ButtonStyle.Danger)
   );
 }
 
@@ -151,10 +149,10 @@ function buildVerificationReadyRow(ticketId: string, activated = false): ActionR
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId(ComponentIds.activationButton(ticketId))
-      .setLabel(activated ? "Activated" : "Activation")
+      .setLabel(activated ? "Đã kích hoạt" : "Kích hoạt")
       .setStyle(ButtonStyle.Success)
       .setDisabled(activated),
-    new ButtonBuilder().setCustomId(ComponentIds.closeButton(ticketId)).setLabel("Close").setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(ComponentIds.closeButton(ticketId)).setLabel("Đóng").setStyle(ButtonStyle.Danger)
   );
 }
 
@@ -223,7 +221,7 @@ function readIssueLabelFromContent(content: string): string | null {
 }
 
 function readClaimedByFromContent(content: string): string | null {
-  const match = content.match(/^Claimed by: <@(\d+)>$/m);
+  const match = content.match(/^Staff: <@(\d+)>$/m);
   return match?.[1] ?? null;
 }
 
@@ -272,18 +270,20 @@ function isSteamActivationTicket(panelName: string, panelTemplate: PanelTemplate
 function buildSteamActivationTicketEmbed(): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(0x8b5cf6)
-    .setTitle("Lưu ý trước khi kích hoạt Denuvo")
+    .setTitle("Ảnh mẫu cần gửi")
     .setDescription(
       [
-        "**TRƯỚC KHI CÁC BẠN KÍCH HOẠT DENUVO, HÃY ĐẢM BẢO RẰNG PHẢI TUÂN THỦ CÁC ĐIỀU LUẬT DƯỚI ĐÂY**",
+        "Trước khi gửi ảnh:",
         "",
-        "• tuyệt đối không bao giờ được chạy game từ steam, hãy chạy bằng exe trong thư mục game",
-        "• hãy đảm bảo window update đang disable",
+        "• chạy game bằng file `.exe`, không mở từ Steam",
+        "• giữ Windows Update ở trạng thái tắt",
         "• không update game",
-        "• không chịu trách nhiệm cho mọi bản mod hay ngữ hóa chứa dll dưới mọi hình thức. Nếu có, hãy việt hoá hay mod trước đó rồi crack sau.",
-        `• TRƯỚC TIÊN, HÃY TẢI GAME CLEAN TỪ <#${STEAM_ACTIVATION_DOWNLOAD_GUIDE_CHANNEL_ID}> (NẾU TẢI TỪ STEAMTOOL RỒI THÌ KHÔNG CẦN NỮA) HÃY ĐỌC KĨ TRONG ĐẤY, RỒI CHỤP LẠI ẢNH MÀN HÌNH Y HỆT THẾ NÀY`,
+        "• mod hoặc việt hóa có DLL thì tự chịu trách nhiệm",
+        `• nếu chưa có clean game, tải tại <#${STEAM_ACTIVATION_DOWNLOAD_GUIDE_CHANNEL_ID}>`,
         "",
-        "Khi staff đã claim ticket, hãy gửi ảnh xác minh ngay trong ticket này để bot kiểm tra sơ bộ."
+        "Ảnh cần thấy rõ:",
+        "• cửa sổ Windows Update Blocker có dấu X đỏ",
+        "• cửa sổ Properties của thư mục game trong `SteamLibrary/steamapps/common`"
       ].join("\n")
     )
     .setImage(`attachment://${STEAM_ACTIVATION_TICKET_IMAGE}`);
@@ -394,7 +394,7 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
 
     const message = await channel.send({
       content: isSteamActivation
-        ? buildSteamActivationTicketControlContent(params.requesterId, params.panelName, params.optionLabel)
+        ? buildSteamActivationTicketControlContent(params.requesterId, params.optionLabel)
         : buildDefaultTicketControlContent(params.requesterId, params.panelName, params.optionLabel),
       embeds,
       files,
@@ -417,7 +417,13 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     const hasIssueRow = target.components.some((row) => rowContainsCustomId(row, ComponentIds.issueSelect(ticketId)));
 
     await target.edit({
-      content: this.replaceContentLine(target.content, /^Claimed by: .*$/m, `Claimed by: <@${claimedBy}>`),
+      content: hasIssueRow
+        ? this.replaceContentLine(target.content, /^Claimed by: .*$/m, `Claimed by: <@${claimedBy}>`)
+        : this.replaceContentLine(
+            this.replaceContentLine(target.content, /^Staff: .*$/m, `Staff: <@${claimedBy}>`),
+            /^Tiếp theo: .*$/m,
+            "Tiếp theo: gửi 1 ảnh giống mẫu bên dưới."
+          ),
       embeds: target.embeds.map((embed) => EmbedBuilder.from(embed)),
       components: hasIssueRow
         ? [buildTicketIssueRow(ticketId, selectedIssueValue), buildTicketActionRow(ticketId, true)]
@@ -451,7 +457,7 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
   public async sendVerificationReadyPrompt(channelId: string, ticketId: string): Promise<void> {
     const channel = await this.getTextChannel(channelId);
     await channel.send({
-      content: "Xác minh thành công. Chọn bước tiếp theo.",
+      content: "Ảnh đã đúng mẫu. Chọn bước tiếp theo.",
       components: [buildVerificationReadyRow(ticketId)]
     });
   }
@@ -463,7 +469,7 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     }
 
     await target.edit({
-      content: `Đã chuyển sang bước activation bởi <@${activatedBy}>.`,
+      content: `Đã chuyển sang bước kích hoạt bởi <@${activatedBy}>.`,
       components: [buildVerificationReadyRow(ticketId, true)]
     });
   }
