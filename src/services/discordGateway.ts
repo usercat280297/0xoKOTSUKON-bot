@@ -95,6 +95,7 @@ const STEAM_ACTIVATION_TICKET_IMAGE = "sonic-1.webp";
 const STEAM_ACTIVATION_DOWNLOAD_GUIDE_CHANNEL_ID = "1492126197604155487";
 const STEAM_ACTIVATION_SHARE_REVIEW_CHANNEL_ID = "1492126875781431336";
 const STEAM_ACTIVATION_SUPPORT_CHANNEL_ID = "1492119938788229180";
+const STEAM_ACTIVATION_CHANNEL_ARROW = "<a:outputonlinegiftools:1492551407822176306>";
 const QUICK_DETAIL_FALLBACK = "Not selected yet";
 const MAX_SELECTS_PER_MESSAGE = 2;
 const MAX_OPTIONS_PER_SELECT = 25;
@@ -239,10 +240,10 @@ function buildActivationTokenEmbed(options: {
               `Hết hạn tải token <t:${expiresAt}:R>.`,
               "",
               "**NẾU CRACK HOẠT ĐỘNG, GỬI ẢNH VÀO**",
-              `➜ <#${STEAM_ACTIVATION_SHARE_REVIEW_CHANNEL_ID}> (#📸┇𝑺𝑯𝑨𝑹𝑬-𝑹𝑬𝑽𝑰𝑬𝑾)`,
+              `${STEAM_ACTIVATION_CHANNEL_ARROW} <#${STEAM_ACTIVATION_SHARE_REVIEW_CHANNEL_ID}> (#📸┇𝑺𝑯𝑨𝑹𝑬-𝑹𝑬𝑽𝑰𝑬𝑾)`,
               "",
               "**NẾU LỖI, HÃY GỬI ẢNH VÀO**",
-              `➜ <#${STEAM_ACTIVATION_SUPPORT_CHANNEL_ID}> (#⚠┇𝑺𝑼𝑷𝑷𝑶𝑹𝑻-𝑵𝑯𝑨𝑼)`,
+              `${STEAM_ACTIVATION_CHANNEL_ARROW} <#${STEAM_ACTIVATION_SUPPORT_CHANNEL_ID}> (#⚠┇𝑺𝑼𝑷𝑷𝑶𝑹𝑻-𝑵𝑯𝑨𝑼)`,
               "",
               downloadLine
             ])
