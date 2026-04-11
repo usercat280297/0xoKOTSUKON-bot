@@ -156,6 +156,17 @@ function buildVerificationReadyRow(ticketId: string, activated = false): ActionR
   );
 }
 
+function buildVerificationReadyEmbed(activated = false): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(activated ? 0x22c55e : 0xf59e0b)
+    .setTitle(activated ? "Đang chờ kích hoạt" : "Xác minh hoàn tất")
+    .setDescription(
+      activated
+        ? "Vui lòng đợi 1 chút nhé, admin sẽ vào kích hoạt cho bạn."
+        : "Ảnh đã đúng mẫu. Bấm **Kích hoạt** để chuyển sang bước tiếp theo."
+    );
+}
+
 function formatStockDescription(option: TicketOption): string {
   if (option.stockRemaining === null || option.stockTotal === null) {
     if (option.stockRemaining !== null) {
@@ -457,7 +468,7 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
   public async sendVerificationReadyPrompt(channelId: string, ticketId: string): Promise<void> {
     const channel = await this.getTextChannel(channelId);
     await channel.send({
-      content: "Ảnh đã đúng mẫu. Chọn bước tiếp theo.",
+      embeds: [buildVerificationReadyEmbed(false)],
       components: [buildVerificationReadyRow(ticketId)]
     });
   }
@@ -469,7 +480,8 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     }
 
     await target.edit({
-      content: "Vui lòng đợi 1 chút nhé, admin sẽ vào kích hoạt cho bạn.",
+      content: null,
+      embeds: [buildVerificationReadyEmbed(true)],
       components: [buildVerificationReadyRow(ticketId, true)]
     });
   }
