@@ -14,6 +14,7 @@ import {
 import { join } from "node:path";
 import { ticketIssueCatalog } from "../config/ticketIssueCatalog";
 import type { TicketOption, TicketPanelWithOptions, TranscriptMessage } from "../domain/types";
+import type { BusinessHoursService } from "./businessHoursService";
 import { ComponentIds } from "../utils/componentIds";
 import { slugifyTicketName } from "../utils/formatters";
 
@@ -193,8 +194,40 @@ function readClaimedByFromContent(content: string): string | null {
   return match?.[1] ?? null;
 }
 
+function toDiscordTimestamp(date: Date): number {
+  return Math.floor(date.getTime() / 1000);
+}
+
+function buildCountdownLines(
+  businessHours?: BusinessHoursService
+): string[] {
+  if (!businessHours) {
+    return [];
+  }
+
+  const countdown = businessHours.getCountdown();
+  if (countdown.isOpen && countdown.closesAt) {
+    const closeAt = toDiscordTimestamp(countdown.closesAt);
+    return [
+      "**Countdown**",
+      `- Ticket window closes <t:${closeAt}:R>`,
+      `- Closing time: <t:${closeAt}:t> (${countdown.timezone})`
+    ];
+  }
+
+  const nextOpenAt = toDiscordTimestamp(countdown.nextOpenAt);
+  return [
+    "**Countdown**",
+    `- Ticket window opens <t:${nextOpenAt}:R>`,
+    `- Opening time: <t:${nextOpenAt}:t> (${countdown.timezone})`
+  ];
+}
+
 export class DiscordJsTicketGateway implements DiscordTicketGateway {
-  public constructor(private readonly client: Client) {}
+  public constructor(
+    private readonly client: Client,
+    private readonly businessHours?: BusinessHoursService
+  ) {}
 
   public async sendPanelMessage(panel: TicketPanelWithOptions): Promise<string[]> {
     const channel = await this.getTextChannel(panel.channelId);
@@ -480,6 +513,14 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
       .setFooter({
         text: "0xoKITSU Ticket Support"
       });
+
+    const countdownLines = buildCountdownLines(this.businessHours);
+    if (countdownLines.length > 0) {
+      embed.addFields({
+        name: countdownLines[0],
+        value: countdownLines.slice(1).join("\n")
+      });
+    }
 
     const rows = sections.map((section) =>
       new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(

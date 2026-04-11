@@ -38,14 +38,14 @@ export function createBotApp(env: BotEnv): BotApp {
   const guildConfigs = new PostgresGuildConfigRepository(pool);
   const panelRepository = new PostgresPanelRepository(pool);
   const ticketRepository = new PostgresTicketRepository(pool);
-  const gateway = new DiscordJsTicketGateway(client);
-  const permissionService = new PermissionService();
-  const transcriptService = new TranscriptService();
   const businessHours = new BusinessHoursService({
     timezone: env.ticketTimezone,
     startHour: env.ticketHoursStart,
     endHour: env.ticketHoursEnd
   });
+  const gateway = new DiscordJsTicketGateway(client, businessHours);
+  const permissionService = new PermissionService();
+  const transcriptService = new TranscriptService();
 
   const panelService = new PanelService(panelRepository, gateway);
   const ticketService = new TicketService(

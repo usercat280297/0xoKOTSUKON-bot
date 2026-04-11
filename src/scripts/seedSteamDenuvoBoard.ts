@@ -4,6 +4,7 @@ import { getBotEnv } from "../config/env";
 import { createPool } from "../db/pool";
 import { PostgresGuildConfigRepository } from "../repositories/postgresGuildConfigRepository";
 import { PostgresPanelRepository } from "../repositories/postgresPanelRepository";
+import { BusinessHoursService } from "../services/businessHoursService";
 import { DiscordJsTicketGateway } from "../services/discordGateway";
 import { slugifyTicketName } from "../utils/formatters";
 
@@ -256,7 +257,12 @@ async function main(): Promise<void> {
 
     const panels = new PostgresPanelRepository(pool);
     const guildConfigs = new PostgresGuildConfigRepository(pool);
-    const gateway = new DiscordJsTicketGateway(client);
+    const businessHours = new BusinessHoursService({
+      timezone: env.ticketTimezone,
+      startHour: env.ticketHoursStart,
+      endHour: env.ticketHoursEnd
+    });
+    const gateway = new DiscordJsTicketGateway(client, businessHours);
 
     const existingPanels = await panels.listByGuildId(config.guildId);
     const reusablePanel = existingPanels.find(
