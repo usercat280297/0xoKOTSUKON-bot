@@ -13,6 +13,7 @@ export interface TicketPanel {
   name: string;
   channelId: string;
   messageId: string | null;
+  messageIds: string[];
   placeholder: string;
   template: PanelTemplate;
   active: boolean;

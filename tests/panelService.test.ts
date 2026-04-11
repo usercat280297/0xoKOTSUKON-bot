@@ -10,6 +10,7 @@ function makeGamePanel(): TicketPanelWithOptions {
     name: "Steam Activation",
     channelId: "panel-channel",
     messageId: "message-1",
+    messageIds: ["message-1"],
     placeholder: "Choose a game",
     template: "game-activation",
     active: true,
@@ -69,7 +70,7 @@ describe("PanelService game boards", () => {
     expect(gateway.publishedPanels[0]).toMatchObject({
       panelId: "panel-1",
       optionCount: 2,
-      messageId: "message-1"
+      messageIds: ["message-1"]
     });
   });
 

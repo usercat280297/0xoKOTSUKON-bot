@@ -26,7 +26,7 @@ export interface PanelRepository {
   getById(panelId: string): Promise<TicketPanelWithOptions | null>;
   getOptionById(optionId: string): Promise<TicketOption | null>;
   listByGuildId(guildId: string): Promise<TicketPanelWithOptions[]>;
-  savePublishedMessage(panelId: string, messageId: string): Promise<void>;
+  savePublishedMessages(panelId: string, messageIds: string[]): Promise<void>;
   disable(panelId: string): Promise<boolean>;
 }
 

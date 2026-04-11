@@ -46,7 +46,7 @@ export interface SendLogParams {
 }
 
 export interface DiscordTicketGateway {
-  sendPanelMessage(panel: TicketPanelWithOptions): Promise<string>;
+  sendPanelMessage(panel: TicketPanelWithOptions): Promise<string[]>;
   createTicketChannel(params: CreateTicketChannelParams): Promise<CreateTicketChannelResult>;
   sendTicketIntro(params: SendTicketIntroParams): Promise<string>;
   updateTicketClaimState(channelId: string, ticketId: string, claimedBy: string): Promise<void>;
@@ -76,7 +76,7 @@ const GAME_ACTIVATION_ICON_URL =
   "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExaGlsaGxqOGY5Y2d2aXV0dnJzNzdodGtzdW9taGg1cmF6cmc2NXhqcCZlcD12MV9zdGlja2Vyc19zZWFyY2gmY3Q9cw/VeTIkcoBeync63rDWy/giphy.gif";
 const GAME_ACTIVATION_IMAGE = "game-steam-1_744287f2722049808217c58c22a3f801.jpg";
 const QUICK_DETAIL_FALLBACK = "Not selected yet";
-const MAX_SELECTS_PER_MESSAGE = 5;
+const MAX_SELECTS_PER_MESSAGE = 2;
 const MAX_OPTIONS_PER_SELECT = 25;
 
 function buildTicketControlContent(
@@ -196,22 +196,37 @@ function readClaimedByFromContent(content: string): string | null {
 export class DiscordJsTicketGateway implements DiscordTicketGateway {
   public constructor(private readonly client: Client) {}
 
-  public async sendPanelMessage(panel: TicketPanelWithOptions): Promise<string> {
+  public async sendPanelMessage(panel: TicketPanelWithOptions): Promise<string[]> {
     const channel = await this.getTextChannel(panel.channelId);
-    const payload = this.buildPanelMessage(panel);
+    const payloads = this.buildPanelMessages(panel);
+    const existingMessages: Message[] = [];
 
-    if (panel.messageId) {
+    for (const messageId of panel.messageIds) {
       try {
-        const existingMessage = await channel.messages.fetch(panel.messageId);
-        await existingMessage.edit(payload);
-        return existingMessage.id;
+        existingMessages.push(await channel.messages.fetch(messageId));
       } catch {
-        // Fall back to creating a new message if the old one no longer exists.
+        // Ignore stale panel message ids and recreate them below.
       }
     }
 
-    const message = await channel.send(payload);
-    return message.id;
+    const finalIds: string[] = [];
+    for (let index = 0; index < payloads.length; index += 1) {
+      const payload = payloads[index];
+      const existingMessage = existingMessages[index];
+      if (existingMessage) {
+        await existingMessage.edit(payload);
+        finalIds.push(existingMessage.id);
+      } else {
+        const createdMessage = await channel.send(payload);
+        finalIds.push(createdMessage.id);
+      }
+    }
+
+    for (const staleMessage of existingMessages.slice(payloads.length)) {
+      await staleMessage.delete().catch(() => undefined);
+    }
+
+    return finalIds;
   }
 
   public async createTicketChannel(params: CreateTicketChannelParams): Promise<CreateTicketChannelResult> {
@@ -406,7 +421,7 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     return `${content}\n${replacement}`;
   }
 
-  private buildPanelMessage(panel: TicketPanelWithOptions): PanelMessagePayload {
+  private buildPanelMessages(panel: TicketPanelWithOptions): PanelMessagePayload[] {
     const activeOptions = panel.options.filter((option) => option.active);
     if (activeOptions.length === 0) {
       throw new Error("Panel has no active options.");
@@ -427,22 +442,18 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
           )
       );
 
-      return {
-        content: `**${panel.name}**\nSelect the ticket type you need from the dropdown below.`,
-        components: [row]
-      };
+      return [
+        {
+          content: `**${panel.name}**\nSelect the ticket type you need from the dropdown below.`,
+          components: [row]
+        }
+      ];
     }
 
     const hero = new AttachmentBuilder(join(process.cwd(), "src/assets", GAME_ACTIVATION_IMAGE), {
       name: GAME_ACTIVATION_IMAGE
     });
     const sections = buildGameBoardSections(panel);
-    if (sections.length > MAX_SELECTS_PER_MESSAGE) {
-      throw new Error(
-        `This panel needs ${sections.length} dropdowns, but Discord only allows ${MAX_SELECTS_PER_MESSAGE} select menus per message. Split the board into fewer sections.`
-      );
-    }
-
     const embed = new EmbedBuilder()
       .setColor(0x1b2838)
       .setAuthor({
@@ -470,24 +481,39 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
         text: "0xoKITSU Ticket Support"
       });
 
-    return {
-      embeds: [embed],
-      files: [hero],
-      components: sections.map((section) =>
-        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId(ComponentIds.panelSelect(panel.id, section.scope))
-            .setPlaceholder(section.label)
-            .addOptions(
-              section.options.map((option) => ({
-                label: option.label,
-                value: option.value,
-                emoji: option.emoji ?? undefined,
-                description: formatStockDescription(option)
-              }))
-            )
-        )
+    const rows = sections.map((section) =>
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId(ComponentIds.panelSelect(panel.id, section.scope))
+          .setPlaceholder(section.label)
+          .addOptions(
+            section.options.map((option) => ({
+              label: option.label,
+              value: option.value,
+              emoji: option.emoji ?? undefined,
+              description: formatStockDescription(option)
+            }))
+          )
       )
-    };
+    );
+
+    const payloads: PanelMessagePayload[] = [];
+    for (let index = 0; index < rows.length; index += MAX_SELECTS_PER_MESSAGE) {
+      const slice = rows.slice(index, index + MAX_SELECTS_PER_MESSAGE);
+      if (index === 0) {
+        payloads.push({
+          embeds: [embed],
+          files: [hero],
+          components: slice
+        });
+      } else {
+        payloads.push({
+          content: `**${panel.name}** continued`,
+          components: slice
+        });
+      }
+    }
+
+    return payloads;
   }
 }

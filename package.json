@@ -13,7 +13,8 @@
     "register:commands": "tsx src/scripts/registerCommands.ts",
     "register:commands:prod": "node dist/scripts/registerCommands.js",
     "db:init": "tsx src/scripts/applySchema.ts",
-    "db:init:prod": "node dist/scripts/applySchema.js"
+    "db:init:prod": "node dist/scripts/applySchema.js",
+    "seed:steam-denuvo": "tsx src/scripts/seedSteamDenuvoBoard.ts"
   },
   "engines": {
     "node": ">=22"

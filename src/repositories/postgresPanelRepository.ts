@@ -11,12 +11,16 @@ import type {
 import type { PanelRepository } from "./interfaces";
 
 function mapPanel(row: Record<string, unknown>): TicketPanel {
+  const rawMessageIds = Array.isArray(row.message_ids) ? row.message_ids : [];
+  const messageIds = rawMessageIds.map((value) => String(value)).filter(Boolean);
+  const firstMessageId = row.message_id ? String(row.message_id) : messageIds[0] ?? null;
   return {
     id: String(row.id),
     guildId: String(row.guild_id),
     name: String(row.name),
     channelId: String(row.channel_id),
-    messageId: row.message_id ? String(row.message_id) : null,
+    messageId: firstMessageId,
+    messageIds: firstMessageId && !messageIds.includes(firstMessageId) ? [firstMessageId, ...messageIds] : messageIds,
     placeholder: String(row.placeholder),
     template: row.template === "game-activation" ? "game-activation" : "default",
     active: Boolean(row.active)
@@ -51,7 +55,7 @@ export class PostgresPanelRepository implements PanelRepository {
       `
         INSERT INTO ticket_panels (id, guild_id, name, channel_id, placeholder, template, active)
         VALUES ($1, $2, $3, $4, $5, $6, TRUE)
-        RETURNING id, guild_id, name, channel_id, message_id, placeholder, template, active
+        RETURNING id, guild_id, name, channel_id, message_id, message_ids, placeholder, template, active
       `,
       [id, input.guildId, input.name, input.channelId, input.placeholder, input.template]
     );
@@ -148,7 +152,7 @@ export class PostgresPanelRepository implements PanelRepository {
 
   public async getById(panelId: string): Promise<TicketPanelWithOptions | null> {
     const panelResult = await this.pool.query(
-      "SELECT id, guild_id, name, channel_id, message_id, placeholder, template, active FROM ticket_panels WHERE id = $1",
+      "SELECT id, guild_id, name, channel_id, message_id, message_ids, placeholder, template, active FROM ticket_panels WHERE id = $1",
       [panelId]
     );
 
@@ -215,7 +219,7 @@ export class PostgresPanelRepository implements PanelRepository {
 
   public async listByGuildId(guildId: string): Promise<TicketPanelWithOptions[]> {
     const panelResult = await this.pool.query(
-      "SELECT id, guild_id, name, channel_id, message_id, placeholder, template, active FROM ticket_panels WHERE guild_id = $1 ORDER BY created_at ASC",
+      "SELECT id, guild_id, name, channel_id, message_id, message_ids, placeholder, template, active FROM ticket_panels WHERE guild_id = $1 ORDER BY created_at ASC",
       [guildId]
     );
 
@@ -263,8 +267,12 @@ export class PostgresPanelRepository implements PanelRepository {
     }));
   }
 
-  public async savePublishedMessage(panelId: string, messageId: string): Promise<void> {
-    await this.pool.query("UPDATE ticket_panels SET message_id = $2 WHERE id = $1", [panelId, messageId]);
+  public async savePublishedMessages(panelId: string, messageIds: string[]): Promise<void> {
+    await this.pool.query("UPDATE ticket_panels SET message_id = $2, message_ids = $3::jsonb WHERE id = $1", [
+      panelId,
+      messageIds[0] ?? null,
+      JSON.stringify(messageIds)
+    ]);
   }
 
   public async disable(panelId: string): Promise<boolean> {

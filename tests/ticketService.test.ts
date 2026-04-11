@@ -18,6 +18,7 @@ function makePanel(): TicketPanelWithOptions {
     name: "Main Support",
     channelId: "panel-channel",
     messageId: null,
+    messageIds: [],
     placeholder: "Choose a route",
     template: "default",
     active: true,

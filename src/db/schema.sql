@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS ticket_panels (
   name TEXT NOT NULL,
   channel_id TEXT NOT NULL,
   message_id TEXT NULL,
+  message_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
   placeholder TEXT NOT NULL,
   template TEXT NOT NULL DEFAULT 'default',
   active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -20,6 +21,9 @@ CREATE TABLE IF NOT EXISTS ticket_panels (
 
 ALTER TABLE ticket_panels
   ADD COLUMN IF NOT EXISTS template TEXT NOT NULL DEFAULT 'default';
+
+ALTER TABLE ticket_panels
+  ADD COLUMN IF NOT EXISTS message_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 CREATE TABLE IF NOT EXISTS ticket_options (
   id TEXT PRIMARY KEY,

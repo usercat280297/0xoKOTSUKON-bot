@@ -53,6 +53,7 @@ export class FakePanelRepository implements PanelRepository {
       name: input.name,
       channelId: input.channelId,
       messageId: null,
+      messageIds: [],
       placeholder: input.placeholder,
       template: input.template,
       active: true,
@@ -111,10 +112,11 @@ export class FakePanelRepository implements PanelRepository {
     return [...this.panels.values()].filter((panel) => panel.guildId === guildId);
   }
 
-  public async savePublishedMessage(panelId: string, messageId: string): Promise<void> {
+  public async savePublishedMessages(panelId: string, messageIds: string[]): Promise<void> {
     const panel = this.panels.get(panelId);
     if (panel) {
-      panel.messageId = messageId;
+      panel.messageId = messageIds[0] ?? null;
+      panel.messageIds = [...messageIds];
     }
   }
 
@@ -203,7 +205,7 @@ export class FakeTicketRepository implements TicketRepository {
 }
 
 export class FakeDiscordGateway implements DiscordTicketGateway {
-  public publishedPanels: Array<{ panelId: string; optionCount: number; messageId: string }> = [];
+  public publishedPanels: Array<{ panelId: string; optionCount: number; messageIds: string[] }> = [];
   public createdChannels: CreateTicketChannelParams[] = [];
   public introMessages: SendTicketIntroParams[] = [];
   public claimUpdates: Array<{ channelId: string; ticketId: string; claimedBy: string }> = [];
@@ -216,14 +218,14 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
   public logMessages: SendLogParams[] = [];
   public transcriptMessages: TranscriptMessage[] = [];
 
-  public async sendPanelMessage(panel: TicketPanelWithOptions): Promise<string> {
-    const messageId = panel.messageId ?? `panel-message-${panel.id}`;
+  public async sendPanelMessage(panel: TicketPanelWithOptions): Promise<string[]> {
+    const messageIds = panel.messageIds.length > 0 ? [...panel.messageIds] : [panel.messageId ?? `panel-message-${panel.id}`];
     this.publishedPanels.push({
       panelId: panel.id,
       optionCount: panel.options.length,
-      messageId
+      messageIds
     });
-    return messageId;
+    return messageIds;
   }
 
   public async createTicketChannel(params: CreateTicketChannelParams): Promise<CreateTicketChannelResult> {

@@ -116,12 +116,13 @@ export class PanelService {
       throw new Error("Panel has no active options.");
     }
 
-    const messageId = await this.gateway.sendPanelMessage(panel);
-    await this.panels.savePublishedMessage(panelId, messageId);
+    const messageIds = await this.gateway.sendPanelMessage(panel);
+    await this.panels.savePublishedMessages(panelId, messageIds);
 
     return {
       ...panel,
-      messageId
+      messageId: messageIds[0] ?? null,
+      messageIds
     };
   }
 
@@ -188,13 +189,13 @@ export class PanelService {
 
   private async refreshPublishedPanel(panelId: string): Promise<boolean> {
     const panel = await this.panels.getById(panelId);
-    if (!panel || !panel.active || !panel.messageId) {
+    if (!panel || !panel.active || panel.messageIds.length === 0) {
       return false;
     }
 
-    const messageId = await this.gateway.sendPanelMessage(panel);
-    if (messageId !== panel.messageId) {
-      await this.panels.savePublishedMessage(panelId, messageId);
+    const messageIds = await this.gateway.sendPanelMessage(panel);
+    if (messageIds.join(",") !== panel.messageIds.join(",")) {
+      await this.panels.savePublishedMessages(panelId, messageIds);
     }
     return true;
   }
