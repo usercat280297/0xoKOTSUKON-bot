@@ -27,12 +27,15 @@ import {
 import { extractDisplayName, extractRoleIds, replyEphemeral } from "../utils/interactions";
 import { SelfRoleService } from "../services/selfRoleService";
 import { DailyCheckinService } from "../services/dailyCheckinService";
+import type { DiscordTicketGateway } from "../services/discordGateway";
 
 export interface InteractionDependencies {
   panels: PanelService;
   tickets: TicketService;
   selfRoles: SelfRoleService;
   dailyCheckins: DailyCheckinService;
+  gateway: Pick<DiscordTicketGateway, "sendChannelMessage">;
+  dailyCheckinLogChannelId: string | null;
 }
 
 export async function handleStringSelectMenuInteraction(
@@ -124,6 +127,21 @@ export async function handleButtonInteraction(
   const dailyCheckinButton = parseDailyCheckinButtonId(interaction.customId);
   if (dailyCheckinButton) {
     const result = await dependencies.dailyCheckins.checkIn(interaction.guildId!, interaction.user.id);
+    if (!result.alreadyCheckedIn && dependencies.dailyCheckinLogChannelId) {
+      await dependencies.gateway
+        .sendChannelMessage(
+          dependencies.dailyCheckinLogChannelId,
+          [
+            `✅ <@${interaction.user.id}> vừa điểm danh thành công.`,
+            `Chuỗi hiện tại: **${result.streak}** ngày`,
+            `Tổng điểm danh: **${result.total}** ngày`,
+            `Ngày: \`${result.checkedInDate}\``
+          ].join("\n")
+        )
+        .catch((error) => {
+          console.error("Failed to send daily check-in log.", error);
+        });
+    }
     await replyEphemeral(interaction, result.message);
     return;
   }

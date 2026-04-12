@@ -10,6 +10,7 @@ export interface BotEnv {
   ticketTimezone: string;
   ticketHoursStart: number;
   ticketHoursEnd: number;
+  dailyCheckinLogChannelId: string | null;
   healthServer: {
     enabled: boolean;
     host: string;
@@ -28,6 +29,10 @@ export interface BotEnv {
 
 const DEFAULT_STEAM_UPDATE_CHANNELS: Record<string, string> = {
   "1492076309323714570": "1492117958368034878"
+};
+
+const DEFAULT_DAILY_CHECKIN_LOG_CHANNELS: Record<string, string> = {
+  "1492076309323714570": "1492851767711502409"
 };
 
 function requireEnv(name: string): string {
@@ -51,6 +56,9 @@ export function getBotEnv(): BotEnv {
   const steamUpdateChannelId =
     process.env.STEAM_UPDATES_CHANNEL_ID ??
     (process.env.DISCORD_GUILD_ID ? DEFAULT_STEAM_UPDATE_CHANNELS[process.env.DISCORD_GUILD_ID] ?? null : null);
+  const dailyCheckinLogChannelId =
+    process.env.DAILY_CHECKIN_LOG_CHANNEL_ID ??
+    (process.env.DISCORD_GUILD_ID ? DEFAULT_DAILY_CHECKIN_LOG_CHANNELS[process.env.DISCORD_GUILD_ID] ?? null : null);
   const steamUpdatePollMinutes = Number(process.env.STEAM_UPDATE_POLL_MINUTES ?? "1");
   const steamUpdateBatchSize = Number(process.env.STEAM_UPDATE_BATCH_SIZE ?? "120");
   const steamUpdateGames = (process.env.STEAM_UPDATE_GAMES ?? "")
@@ -94,6 +102,7 @@ export function getBotEnv(): BotEnv {
     ticketTimezone,
     ticketHoursStart,
     ticketHoursEnd,
+    dailyCheckinLogChannelId,
     healthServer: {
       enabled: healthServerEnabled,
       host: healthHost,

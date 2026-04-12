@@ -92,7 +92,9 @@ export function createBotApp(env: BotEnv): BotApp {
           panels: panelService,
           tickets: ticketService,
           selfRoles: selfRoleService,
-          dailyCheckins: dailyCheckinService
+          dailyCheckins: dailyCheckinService,
+          gateway,
+          dailyCheckinLogChannelId: env.dailyCheckinLogChannelId
         });
         return;
       }
@@ -102,7 +104,9 @@ export function createBotApp(env: BotEnv): BotApp {
           panels: panelService,
           tickets: ticketService,
           selfRoles: selfRoleService,
-          dailyCheckins: dailyCheckinService
+          dailyCheckins: dailyCheckinService,
+          gateway,
+          dailyCheckinLogChannelId: env.dailyCheckinLogChannelId
         });
         return;
       }
@@ -112,7 +116,9 @@ export function createBotApp(env: BotEnv): BotApp {
           panels: panelService,
           tickets: ticketService,
           selfRoles: selfRoleService,
-          dailyCheckins: dailyCheckinService
+          dailyCheckins: dailyCheckinService,
+          gateway,
+          dailyCheckinLogChannelId: env.dailyCheckinLogChannelId
         });
       }
     } catch (error) {
