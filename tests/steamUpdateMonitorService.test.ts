@@ -3,6 +3,8 @@ import {
   buildSteamNewsExcerpt,
   isLikelyGameUpdate,
   normalizeSteamUpdateTitle,
+  parseSteamPublicVersionPayload,
+  parseSteamStoreDetailsPayload,
   parseCuratorGamesHtml,
   pickLatestRelevantNews,
   selectTrackedGames,
@@ -80,5 +82,46 @@ describe("steamUpdateMonitorService helpers", () => {
 
   it("normalizes steam update titles with html entities", () => {
     expect(normalizeSteamUpdateTitle("EA SPORTS FC&amp;#8482; 26")).toBe("EA SPORTS FC™ 26");
+  });
+
+  it("parses steam store app details for richer notifications", () => {
+    const payload = {
+      "3321460": {
+        success: true,
+        data: {
+          short_description: "Open-world action adventure in Pywel.",
+          header_image: "https://cdn.example.com/header.jpg",
+          capsule_image: "https://cdn.example.com/capsule.jpg",
+          developers: ["Pearl Abyss"],
+          publishers: ["Pearl Abyss"],
+          genres: [{ id: "1", description: "Action" }, { id: "25", description: "Adventure" }]
+        }
+      }
+    };
+
+    expect(parseSteamStoreDetailsPayload(payload, 3321460)).toEqual({
+      shortDescription: "Open-world action adventure in Pywel.",
+      headerImageUrl: "https://cdn.example.com/header.jpg",
+      capsuleImageUrl: "https://cdn.example.com/capsule.jpg",
+      developers: ["Pearl Abyss"],
+      publishers: ["Pearl Abyss"],
+      genres: ["Action", "Adventure"]
+    });
+  });
+
+  it("parses steam public version payload", () => {
+    const payload = {
+      response: {
+        success: true,
+        up_to_date: false,
+        version_is_listable: true,
+        required_version: 22748572
+      }
+    };
+
+    expect(parseSteamPublicVersionPayload(payload)).toEqual({
+      buildId: "22748572",
+      versionIsListable: true
+    });
   });
 });

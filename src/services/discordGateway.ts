@@ -84,10 +84,22 @@ export interface SendSteamUpdateNotificationParams {
     title: string;
     url: string;
     contents: string;
-    date: number;
-    feedLabel: string | null;
-  };
-  excerpt: string;
+      date: number;
+      feedLabel: string | null;
+  } | null;
+  patchSummary: string;
+  storeDetails: {
+    shortDescription: string | null;
+    headerImageUrl: string | null;
+    capsuleImageUrl: string | null;
+    developers: string[];
+    publishers: string[];
+    genres: string[];
+  } | null;
+  previousBuildId: string | null;
+  currentBuildId: string | null;
+  buildIdReliable: boolean;
+  detectedAt: number;
 }
 
 export interface DiscordTicketGateway {
@@ -338,34 +350,100 @@ function buildDonationBoardRow(panelId: string, optionValue: string): ActionRowB
   );
 }
 
+function truncateForField(value: string | null | undefined, maxLength: number): string | null {
+  if (!value) {
+    return null;
+  }
+
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
 function buildSteamUpdateEmbed(params: SendSteamUpdateNotificationParams): EmbedBuilder {
-  return new EmbedBuilder()
+  const gameInfoLines = [
+    `App ID: \`${params.game.appId}\``,
+    params.storeDetails?.developers.length ? `Developer: ${params.storeDetails.developers.slice(0, 2).join(", ")}` : null,
+    params.storeDetails?.publishers.length ? `Publisher: ${params.storeDetails.publishers.slice(0, 2).join(", ")}` : null,
+    params.storeDetails?.genres.length ? `Genres: ${params.storeDetails.genres.slice(0, 3).join(", ")}` : null
+  ].filter((line): line is string => Boolean(line));
+
+  const buildLabel =
+    params.previousBuildId && params.currentBuildId && params.previousBuildId !== params.currentBuildId
+      ? `\`${params.previousBuildId}\` → \`${params.currentBuildId}\``
+      : params.currentBuildId
+        ? `Current: \`${params.currentBuildId}\``
+        : "Steam did not expose a public version number for this update.";
+
+  const embed = new EmbedBuilder()
     .setColor(0xe879f9)
-    .setTitle("Game Update Detected")
+    .setTitle(`Steam Update • ${params.game.title}`)
+    .setURL(params.news?.url ?? params.game.storeUrl)
     .setDescription(
       [
-        `[${params.game.title}](${params.game.storeUrl})`,
+        `**Patch:** ${params.news?.title ?? "Public build changed on Steam"}`,
         "",
-        `**${params.news.title}**`,
-        params.excerpt
-      ]
-        .filter(Boolean)
-        .join("\n")
+        truncateForField(params.patchSummary, 1200) ?? "No official patch notes were published in Steam News."
+      ].join("\n")
     )
-    .addFields({
-      name: "Published",
-      value: `<t:${params.news.date}:F>`
-    })
+    .addFields(
+      {
+        name: "Game",
+        value: gameInfoLines.join("\n"),
+        inline: false
+      },
+      {
+        name: params.buildIdReliable ? "Public Build" : "Public Version",
+        value: buildLabel,
+        inline: false
+      },
+      {
+        name: "About Game",
+        value:
+          truncateForField(params.storeDetails?.shortDescription, 500) ??
+          "Steam store did not return a short description for this title.",
+        inline: false
+      },
+      {
+        name: "Published",
+        value: `<t:${params.detectedAt}:F>`,
+        inline: false
+      }
+    )
     .setFooter({
-      text: params.news.feedLabel ? `Source: ${params.news.feedLabel}` : `App ID: ${params.game.appId}`
+      text: params.news?.feedLabel
+        ? `Source: ${params.news.feedLabel}`
+        : "Source: Steam official app/news data"
     });
+
+  if (params.storeDetails?.headerImageUrl) {
+    embed.setImage(params.storeDetails.headerImageUrl);
+  } else if (params.game.imageUrl) {
+    embed.setImage(params.game.imageUrl);
+  }
+
+  if (params.storeDetails?.capsuleImageUrl) {
+    embed.setThumbnail(params.storeDetails.capsuleImageUrl);
+  } else if (params.game.imageUrl) {
+    embed.setThumbnail(params.game.imageUrl);
+  }
+
+  return embed;
 }
 
 function buildSteamUpdateRow(params: SendSteamUpdateNotificationParams): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setLabel("View Patch").setStyle(ButtonStyle.Link).setURL(params.news.url),
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setLabel(params.news ? "View Patch Notes" : "Open Store Page")
+      .setStyle(ButtonStyle.Link)
+      .setURL(params.news?.url ?? params.game.storeUrl),
+    new ButtonBuilder().setLabel("Steam Store").setStyle(ButtonStyle.Link).setURL(params.game.storeUrl),
     new ButtonBuilder().setLabel("SteamDB History").setStyle(ButtonStyle.Link).setURL(params.game.steamDbPatchnotesUrl)
   );
+
+  return row;
 }
 
 function buildActivationTokenEmbed(options: {
@@ -735,9 +813,6 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
   public async sendSteamUpdateNotification(params: SendSteamUpdateNotificationParams): Promise<void> {
     const channel = await this.getTextChannel(params.channelId);
     const embed = buildSteamUpdateEmbed(params);
-    if (params.game.imageUrl) {
-      embed.setImage(params.game.imageUrl);
-    }
 
     await channel.send({
       embeds: [embed],
