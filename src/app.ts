@@ -12,6 +12,7 @@ import { DiscordJsTicketGateway } from "./services/discordGateway";
 import { PanelService } from "./services/panelService";
 import { PermissionService } from "./services/permissionService";
 import { SelfRoleService } from "./services/selfRoleService";
+import { SteamUpdateMonitorService } from "./services/steamUpdateMonitorService";
 import { TesseractSteamActivationScreenshotService } from "./services/steamActivationScreenshotService";
 import { TicketService } from "./services/ticketService";
 import { TranscriptService } from "./services/transcriptService";
@@ -50,6 +51,7 @@ export function createBotApp(env: BotEnv): BotApp {
   const transcriptService = new TranscriptService();
   const selfRoleService = new SelfRoleService(gateway);
   const steamActivationScreenshots = new TesseractSteamActivationScreenshotService();
+  const steamUpdates = new SteamUpdateMonitorService(gateway, env.steamUpdates);
   let deadlineSweepTimer: NodeJS.Timeout | null = null;
 
   const panelService = new PanelService(panelRepository, gateway);
@@ -140,6 +142,9 @@ export function createBotApp(env: BotEnv): BotApp {
     pool,
     async start() {
       await client.login(env.discordToken);
+      await steamUpdates.start().catch((error) => {
+        console.error("Failed to start Steam update monitor.", error);
+      });
       await ticketService.processExpiredSteamDeadlines().catch((error) => {
         console.error("Failed to process ticket deadlines on startup.", error);
       });
@@ -154,6 +159,7 @@ export function createBotApp(env: BotEnv): BotApp {
         clearInterval(deadlineSweepTimer);
         deadlineSweepTimer = null;
       }
+      await steamUpdates.stop();
       client.destroy();
       await pool.end();
     },

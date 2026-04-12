@@ -16,7 +16,19 @@ export interface BotEnv {
     port: number | null;
     path: string;
   };
+  steamUpdates: {
+    enabled: boolean;
+    channelId: string | null;
+    curatorId: string;
+    pollIntervalMs: number;
+    batchSize: number;
+    games: string[];
+  };
 }
+
+const DEFAULT_STEAM_UPDATE_CHANNELS: Record<string, string> = {
+  "1492076309323714570": "1492117958368034878"
+};
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -36,6 +48,15 @@ export function getBotEnv(): BotEnv {
   const portValue = process.env.PORT;
   const healthServerEnabled = process.env.HEALTH_SERVER_ENABLED === "true" || Boolean(portValue);
   const healthPort = portValue ? Number(portValue) : null;
+  const steamUpdateChannelId =
+    process.env.STEAM_UPDATES_CHANNEL_ID ??
+    (process.env.DISCORD_GUILD_ID ? DEFAULT_STEAM_UPDATE_CHANNELS[process.env.DISCORD_GUILD_ID] ?? null : null);
+  const steamUpdatePollMinutes = Number(process.env.STEAM_UPDATE_POLL_MINUTES ?? "10");
+  const steamUpdateBatchSize = Number(process.env.STEAM_UPDATE_BATCH_SIZE ?? "40");
+  const steamUpdateGames = (process.env.STEAM_UPDATE_GAMES ?? "")
+    .split("|")
+    .map((value) => value.trim())
+    .filter(Boolean);
 
   if (!Number.isInteger(ticketHoursStart) || ticketHoursStart < 0 || ticketHoursStart > 23) {
     throw new Error("TICKET_HOURS_START must be an integer between 0 and 23.");
@@ -57,6 +78,14 @@ export function getBotEnv(): BotEnv {
     throw new Error("HEALTH_CHECK_PATH must start with '/'.");
   }
 
+  if (!Number.isFinite(steamUpdatePollMinutes) || steamUpdatePollMinutes <= 0) {
+    throw new Error("STEAM_UPDATE_POLL_MINUTES must be a positive number.");
+  }
+
+  if (!Number.isInteger(steamUpdateBatchSize) || steamUpdateBatchSize <= 0) {
+    throw new Error("STEAM_UPDATE_BATCH_SIZE must be a positive integer.");
+  }
+
   return {
     discordToken: requireEnv("DISCORD_TOKEN"),
     discordApplicationId: requireEnv("DISCORD_APPLICATION_ID"),
@@ -70,6 +99,14 @@ export function getBotEnv(): BotEnv {
       host: healthHost,
       port: healthPort,
       path: healthPath
+    },
+    steamUpdates: {
+      enabled: Boolean(steamUpdateChannelId),
+      channelId: steamUpdateChannelId,
+      curatorId: process.env.STEAM_UPDATE_CURATOR_ID ?? "26095454",
+      pollIntervalMs: Math.round(steamUpdatePollMinutes * 60_000),
+      batchSize: steamUpdateBatchSize,
+      games: steamUpdateGames
     }
   };
 }

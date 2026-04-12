@@ -70,6 +70,26 @@ export interface SendDonationThanksParams {
   userId: string;
 }
 
+export interface SendSteamUpdateNotificationParams {
+  channelId: string;
+  game: {
+    appId: number;
+    title: string;
+    storeUrl: string;
+    imageUrl: string | null;
+    steamDbPatchnotesUrl: string;
+  };
+  news: {
+    gid: string;
+    title: string;
+    url: string;
+    contents: string;
+    date: number;
+    feedLabel: string | null;
+  };
+  excerpt: string;
+}
+
 export interface DiscordTicketGateway {
   sendPanelMessage(panel: TicketPanelWithOptions): Promise<string[]>;
   createTicketChannel(params: CreateTicketChannelParams): Promise<CreateTicketChannelResult>;
@@ -78,6 +98,7 @@ export interface DiscordTicketGateway {
   updateTicketIssueState(channelId: string, ticketId: string, issueValue: string, issueLabel: string): Promise<void>;
   sendChannelMessage(channelId: string, content: string): Promise<void>;
   sendDonationPrompt(params: SendDonationPromptParams): Promise<void>;
+  sendSteamUpdateNotification(params: SendSteamUpdateNotificationParams): Promise<void>;
   markDonationIntentState(channelId: string, ticketId: string): Promise<void>;
   markDonationApprovedState(channelId: string, ticketId: string, approvedBy: string): Promise<void>;
   sendDonationThanks(params: SendDonationThanksParams): Promise<string>;
@@ -314,6 +335,36 @@ function buildDonationBoardRow(panelId: string, optionValue: string): ActionRowB
       .setCustomId(ComponentIds.donationPanelOpen(panelId, optionValue))
       .setLabel("Donate")
       .setStyle(ButtonStyle.Success)
+  );
+}
+
+function buildSteamUpdateEmbed(params: SendSteamUpdateNotificationParams): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0xe879f9)
+    .setTitle("Game Update Detected")
+    .setDescription(
+      [
+        `[${params.game.title}](${params.game.storeUrl})`,
+        "",
+        `**${params.news.title}**`,
+        params.excerpt
+      ]
+        .filter(Boolean)
+        .join("\n")
+    )
+    .addFields({
+      name: "Published",
+      value: `<t:${params.news.date}:F>`
+    })
+    .setFooter({
+      text: params.news.feedLabel ? `Source: ${params.news.feedLabel}` : `App ID: ${params.game.appId}`
+    });
+}
+
+function buildSteamUpdateRow(params: SendSteamUpdateNotificationParams): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setLabel("View Patch").setStyle(ButtonStyle.Link).setURL(params.news.url),
+    new ButtonBuilder().setLabel("SteamDB History").setStyle(ButtonStyle.Link).setURL(params.game.steamDbPatchnotesUrl)
   );
 }
 
@@ -678,6 +729,19 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
           linkUrl: params.donationLinkUrl
         })
       ]
+    });
+  }
+
+  public async sendSteamUpdateNotification(params: SendSteamUpdateNotificationParams): Promise<void> {
+    const channel = await this.getTextChannel(params.channelId);
+    const embed = buildSteamUpdateEmbed(params);
+    if (params.game.imageUrl) {
+      embed.setImage(params.game.imageUrl);
+    }
+
+    await channel.send({
+      embeds: [embed],
+      components: [buildSteamUpdateRow(params)]
     });
   }
 
