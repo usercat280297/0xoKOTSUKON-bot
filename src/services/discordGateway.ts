@@ -81,7 +81,7 @@ export interface DiscordTicketGateway {
   markDonationIntentState(channelId: string, ticketId: string): Promise<void>;
   markDonationApprovedState(channelId: string, ticketId: string, approvedBy: string): Promise<void>;
   sendDonationThanks(params: SendDonationThanksParams): Promise<string>;
-  addGuildMemberRole(guildId: string, userId: string, roleId: string): Promise<void>;
+  addGuildMemberRole(guildId: string, userId: string, roleId: string, reason?: string): Promise<void>;
   sendVerificationReadyPrompt(channelId: string, ticketId: string): Promise<void>;
   markVerificationReadyState(channelId: string, ticketId: string, activatedBy: string): Promise<void>;
   sendActivationTokenPanel(params: SendActivationTokenPanelParams): Promise<void>;
@@ -746,10 +746,10 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     return message.id;
   }
 
-  public async addGuildMemberRole(guildId: string, userId: string, roleId: string): Promise<void> {
+  public async addGuildMemberRole(guildId: string, userId: string, roleId: string, reason = "Role granted by bot"): Promise<void> {
     const guild = await this.client.guilds.fetch(guildId);
     const member = await guild.members.fetch(userId);
-    await member.roles.add(roleId, "Donation approved");
+    await member.roles.add(roleId, reason);
   }
 
   public async sendVerificationReadyPrompt(channelId: string, ticketId: string): Promise<void> {

@@ -11,6 +11,7 @@ import { BusinessHoursService } from "./services/businessHoursService";
 import { DiscordJsTicketGateway } from "./services/discordGateway";
 import { PanelService } from "./services/panelService";
 import { PermissionService } from "./services/permissionService";
+import { SelfRoleService } from "./services/selfRoleService";
 import { TesseractSteamActivationScreenshotService } from "./services/steamActivationScreenshotService";
 import { TicketService } from "./services/ticketService";
 import { TranscriptService } from "./services/transcriptService";
@@ -47,6 +48,7 @@ export function createBotApp(env: BotEnv): BotApp {
   const gateway = new DiscordJsTicketGateway(client, businessHours);
   const permissionService = new PermissionService();
   const transcriptService = new TranscriptService();
+  const selfRoleService = new SelfRoleService(gateway);
   const steamActivationScreenshots = new TesseractSteamActivationScreenshotService();
   let deadlineSweepTimer: NodeJS.Timeout | null = null;
 
@@ -80,7 +82,8 @@ export function createBotApp(env: BotEnv): BotApp {
       if (interaction.isStringSelectMenu()) {
         await handleStringSelectMenuInteraction(interaction, {
           panels: panelService,
-          tickets: ticketService
+          tickets: ticketService,
+          selfRoles: selfRoleService
         });
         return;
       }
@@ -88,7 +91,8 @@ export function createBotApp(env: BotEnv): BotApp {
       if (interaction.isButton()) {
         await handleButtonInteraction(interaction, {
           panels: panelService,
-          tickets: ticketService
+          tickets: ticketService,
+          selfRoles: selfRoleService
         });
         return;
       }
@@ -96,7 +100,8 @@ export function createBotApp(env: BotEnv): BotApp {
       if (interaction.isModalSubmit()) {
         await handleModalSubmitInteraction(interaction, {
           panels: panelService,
-          tickets: ticketService
+          tickets: ticketService,
+          selfRoles: selfRoleService
         });
       }
     } catch (error) {

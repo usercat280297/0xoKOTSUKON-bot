@@ -17,16 +17,19 @@ import {
   parseDonationTicketButton,
   parsePanelResetId,
   parsePanelSelectId,
+  parseSelfRoleButtonId,
   parseTicketButton,
   parseTicketIssueSelectId,
   parseTokenButton,
   parseTokenSupportModalId
 } from "../utils/componentIds";
 import { extractDisplayName, extractRoleIds, replyEphemeral } from "../utils/interactions";
+import { SelfRoleService } from "../services/selfRoleService";
 
 export interface InteractionDependencies {
   panels: PanelService;
   tickets: TicketService;
+  selfRoles: SelfRoleService;
 }
 
 export async function handleStringSelectMenuInteraction(
@@ -98,6 +101,20 @@ export async function handleButtonInteraction(
     await dependencies.panels.publishPanel(donationPanelButton.panelId).catch((error) => {
       console.error(`Failed to auto-refresh donate panel ${donationPanelButton.panelId} after click.`, error);
     });
+    return;
+  }
+
+  const selfRoleButton = parseSelfRoleButtonId(interaction.customId);
+  if (selfRoleButton) {
+    const member = interaction.member instanceof GuildMember ? interaction.member : null;
+    const result = await dependencies.selfRoles.claimRole({
+      guildId: interaction.guildId!,
+      userId: interaction.user.id,
+      memberRoleIds: extractRoleIds(member),
+      roleId: selfRoleButton.roleId
+    });
+
+    await replyEphemeral(interaction, result.message);
     return;
   }
 

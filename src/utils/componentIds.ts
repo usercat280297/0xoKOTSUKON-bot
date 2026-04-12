@@ -2,6 +2,7 @@ export const ComponentIds = {
   panelSelect: (panelId: string, scope?: string) => `ticket-panel:${panelId}${scope ? `:${scope}` : ""}`,
   panelReset: (panelId: string) => `ticket-panel-reset:${panelId}`,
   donationPanelOpen: (panelId: string, optionValue: string) => `ticket-donation-panel:${panelId}:${optionValue}`,
+  selfRoleButton: (roleId: string) => `self-role:${roleId}`,
   issueSelect: (ticketId: string) => `ticket-issue:${ticketId}`,
   claimButton: (ticketId: string) => `ticket:claim:${ticketId}`,
   activationButton: (ticketId: string) => `ticket:activate:${ticketId}`,
@@ -41,6 +42,15 @@ export function parseDonationPanelButtonId(customId: string): { panelId: string;
   }
 
   return { panelId, optionValue };
+}
+
+export function parseSelfRoleButtonId(customId: string): { roleId: string } | null {
+  const [namespace, roleId] = customId.split(":");
+  if (namespace !== "self-role" || !roleId) {
+    return null;
+  }
+
+  return { roleId };
 }
 
 export function parseDonationTicketButton(
