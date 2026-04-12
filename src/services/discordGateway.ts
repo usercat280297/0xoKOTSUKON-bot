@@ -149,6 +149,7 @@ const STEAM_ACTIVATION_DOWNLOAD_GUIDE_CHANNEL_ID = "1492126197604155487";
 const STEAM_ACTIVATION_SHARE_REVIEW_CHANNEL_ID = "1492126875781431336";
 const STEAM_ACTIVATION_SUPPORT_CHANNEL_ID = "1492119938788229180";
 const STEAM_ACTIVATION_CHANNEL_ARROW = "<a:ArrowPointOutStickerbyGwynethDra:1492775981969182762>";
+const STEAM_UPDATE_BUILD_ARROW = "<a:ArrowPointOutStickerbyGwynethDra:1492817020746731640>";
 const DONATION_THANKS_EMOJI = "<a:giphy:1492567045592846526>";
 const DONATION_QR_ATTACHMENT_NAME = "donation-qr.webp";
 const QUICK_DETAIL_FALLBACK = "Not selected yet";
@@ -373,12 +374,12 @@ function buildSteamUpdateEmbed(params: SendSteamUpdateNotificationParams): Embed
 
   const buildLabel =
     params.previousBuildId && params.previousBuildId !== params.currentBuildId
-      ? `\`${params.previousBuildId}\` -> \`${params.currentBuildId}\``
+      ? `\`${params.previousBuildId}\` ${STEAM_UPDATE_BUILD_ARROW} \`${params.currentBuildId}\``
       : `Current: \`${params.currentBuildId}\``;
 
   const embed = new EmbedBuilder()
     .setColor(0xe879f9)
-    .setTitle(`Steam Update • ${params.game.title}`)
+    .setTitle(params.game.title)
     .setURL(params.patch.url)
     .setDescription(
       [
