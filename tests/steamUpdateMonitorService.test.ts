@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  SteamUpdateMonitorService,
   buildSteamDbPatchExcerpt,
   normalizeSteamUpdateTitle,
   parseCuratorGamesHtml,
@@ -7,6 +8,11 @@ import {
   parseSteamStoreDetailsPayload,
   selectTrackedGames
 } from "../src/services/steamUpdateMonitorService";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("steamUpdateMonitorService helpers", () => {
   it("parses app ids, titles, store links and images from curator html", () => {
@@ -141,5 +147,38 @@ describe("steamUpdateMonitorService helpers", () => {
       publishers: ["Pearl Abyss"],
       genres: ["Action", "Adventure"]
     });
+  });
+
+  it("returns an empty patch list when SteamDB RSS responds with 404", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: "Not Found"
+      })
+    );
+
+    const service = new SteamUpdateMonitorService(
+      {
+        sendSteamUpdateNotification: vi.fn()
+      },
+      {
+        getLastSeenBuilds: vi.fn().mockResolvedValue(new Map()),
+        upsertLastSeenBuild: vi.fn().mockResolvedValue(undefined)
+      },
+      {
+        enabled: true,
+        channelId: "channel-1",
+        curatorId: "26095454",
+        pollIntervalMs: 60_000,
+        batchSize: 10,
+        games: []
+      }
+    );
+
+    const patches = await (service as any).fetchSteamDbPatchnotes(4115450);
+
+    expect(patches).toEqual([]);
   });
 });

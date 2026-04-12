@@ -349,7 +349,11 @@ export class SteamUpdateMonitorService {
           return;
         }
 
-        await worker(item);
+        try {
+          await worker(item);
+        } catch (error) {
+          console.error("Steam update worker failed.", error);
+        }
       }
     });
 
@@ -465,6 +469,11 @@ export class SteamUpdateMonitorService {
         "Accept-Language": "en-US,en;q=0.9"
       }
     });
+    if (response.status === 404) {
+      console.warn(`SteamDB patchnotes RSS not found for app ${appId}. Skipping this game.`);
+      return [];
+    }
+
     if (!response.ok) {
       throw new Error(`Failed to fetch SteamDB patchnotes RSS for app ${appId}: ${response.status} ${response.statusText}`);
     }
