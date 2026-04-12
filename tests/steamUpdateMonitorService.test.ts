@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSteamNewsExcerpt,
+  isOfficialSteamNewsUrl,
   isLikelyGameUpdate,
   normalizeSteamUpdateTitle,
   parseSteamPublicVersionPayload,
@@ -69,7 +70,7 @@ describe("steamUpdateMonitorService helpers", () => {
     const news: SteamNewsItem = {
       gid: "abc",
       title: "Hotfix 1.0.2 is live",
-      url: "https://steam.example.com/news/abc",
+      url: "https://steamcommunity.com/games/123/announcements/detail/456",
       contents: "[h1]Patch Notes[/h1] Fixed crashing on startup and improved stability across all regions.",
       date: 1775942400,
       feedLabel: "Community Announcements"
@@ -78,6 +79,29 @@ describe("steamUpdateMonitorService helpers", () => {
     expect(isLikelyGameUpdate(news)).toBe(true);
     expect(pickLatestRelevantNews([news])).toEqual(news);
     expect(buildSteamNewsExcerpt(news.contents)).toContain("Fixed crashing on startup");
+  });
+
+  it("uses only official steam news urls for patch notifications", () => {
+    const externalNews: SteamNewsItem = {
+      gid: "external",
+      title: "Patch 1.0 is live",
+      url: "https://gamemag.ru/news/example",
+      contents: "Patch notes mirrored on external press site.",
+      date: 1775942400,
+      feedLabel: "GameMag"
+    };
+    const steamNews: SteamNewsItem = {
+      gid: "steam",
+      title: "Patch 1.0 is live",
+      url: "https://steamcommunity.com/games/3764200/announcements/detail/1234567890",
+      contents: "Official patch notes on Steam.",
+      date: 1775942500,
+      feedLabel: "Community Announcements"
+    };
+
+    expect(isOfficialSteamNewsUrl(externalNews.url)).toBe(false);
+    expect(isOfficialSteamNewsUrl(steamNews.url)).toBe(true);
+    expect(pickLatestRelevantNews([externalNews, steamNews])).toEqual(steamNews);
   });
 
   it("normalizes steam update titles with html entities", () => {

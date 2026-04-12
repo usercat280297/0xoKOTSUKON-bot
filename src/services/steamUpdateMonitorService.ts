@@ -147,8 +147,18 @@ export function isLikelyGameUpdate(news: SteamNewsItem): boolean {
   return /\bv?\d+\.\d+(\.\d+)?\b/.test(haystack);
 }
 
+export function isOfficialSteamNewsUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    return hostname === "steamcommunity.com" || hostname.endsWith(".steamcommunity.com") || hostname === "store.steampowered.com";
+  } catch {
+    return false;
+  }
+}
+
 export function pickLatestRelevantNews(newsItems: SteamNewsItem[]): SteamNewsItem | null {
-  return newsItems.find((item) => isLikelyGameUpdate(item)) ?? null;
+  return newsItems.find((item) => isOfficialSteamNewsUrl(item.url) && isLikelyGameUpdate(item)) ?? null;
 }
 
 export function buildSteamNewsExcerpt(contents: string, maxLength = 260): string {
