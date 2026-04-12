@@ -35,6 +35,7 @@ export interface SteamUpdateGateway {
 
 const CURATOR_PAGE_SIZE = 100;
 const TRACKED_GAMES_REFRESH_MS = 6 * 60 * 60 * 1000;
+const SWEEP_CONCURRENCY = 12;
 const PATCH_KEYWORDS = [
   "update",
   "patch",
@@ -152,6 +153,7 @@ export class SteamUpdateMonitorService {
     }
 
     await this.refreshTrackedGamesIfNeeded(true);
+    await this.primeKnownNews();
     this.timer = setInterval(() => {
       void this.runSweep().catch((error) => {
         console.error("Steam update sweep failed.", error);
@@ -179,9 +181,7 @@ export class SteamUpdateMonitorService {
       }
 
       const batch = this.nextBatch();
-      for (const game of batch) {
-        await this.checkGame(game);
-      }
+      await this.runWithConcurrency(batch, SWEEP_CONCURRENCY, (game) => this.checkGame(game));
     } finally {
       this.sweepRunning = false;
     }
@@ -209,6 +209,41 @@ export class SteamUpdateMonitorService {
     this.trackedGames = await this.fetchTrackedGames();
     this.lastCatalogRefreshAt = now;
     this.nextCursor = 0;
+  }
+
+  private async primeKnownNews(): Promise<void> {
+    if (this.trackedGames.length === 0) {
+      return;
+    }
+
+    await this.runWithConcurrency(this.trackedGames, SWEEP_CONCURRENCY, async (game) => {
+      const latest = await this.fetchLatestRelevantNews(game.appId);
+      this.knownNewsByAppId.set(game.appId, latest?.gid ?? "");
+    });
+  }
+
+  private async runWithConcurrency<T>(
+    items: readonly T[],
+    concurrency: number,
+    worker: (item: T) => Promise<void>
+  ): Promise<void> {
+    if (items.length === 0) {
+      return;
+    }
+
+    const queue = [...items];
+    const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+      while (queue.length > 0) {
+        const item = queue.shift();
+        if (item === undefined) {
+          return;
+        }
+
+        await worker(item);
+      }
+    });
+
+    await Promise.all(workers);
   }
 
   private async fetchTrackedGames(): Promise<SteamTrackedGame[]> {

@@ -22,3 +22,7 @@ services:
         value: "21"
       - key: TICKET_HOURS_END
         value: "24"
+      - key: STEAM_UPDATE_POLL_MINUTES
+        value: "1"
+      - key: STEAM_UPDATE_BATCH_SIZE
+        value: "120"

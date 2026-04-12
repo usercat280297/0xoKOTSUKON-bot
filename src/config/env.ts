@@ -51,8 +51,8 @@ export function getBotEnv(): BotEnv {
   const steamUpdateChannelId =
     process.env.STEAM_UPDATES_CHANNEL_ID ??
     (process.env.DISCORD_GUILD_ID ? DEFAULT_STEAM_UPDATE_CHANNELS[process.env.DISCORD_GUILD_ID] ?? null : null);
-  const steamUpdatePollMinutes = Number(process.env.STEAM_UPDATE_POLL_MINUTES ?? "10");
-  const steamUpdateBatchSize = Number(process.env.STEAM_UPDATE_BATCH_SIZE ?? "40");
+  const steamUpdatePollMinutes = Number(process.env.STEAM_UPDATE_POLL_MINUTES ?? "1");
+  const steamUpdateBatchSize = Number(process.env.STEAM_UPDATE_BATCH_SIZE ?? "120");
   const steamUpdateGames = (process.env.STEAM_UPDATE_GAMES ?? "")
     .split("|")
     .map((value) => value.trim())
