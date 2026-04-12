@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: 0xokitsu-ticket-bot
+    name: 0xokotsukon-bot
     runtime: node
     plan: free
     autoDeployTrigger: commit

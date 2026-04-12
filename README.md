@@ -1,4 +1,4 @@
-# 0xoKITSU Ticket Bot
+# 0xoKOTSUKON Bot
 
 Discord ticket bot built with `TypeScript + discord.js + Postgres`.
 

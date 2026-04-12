@@ -1,5 +1,5 @@
 {
-  "name": "0xokitsu-ticket-bot",
+  "name": "0xokotsukon-bot",
   "version": "1.0.0",
   "private": true,
   "description": "Discord ticket bot with multi-panel dropdown routing and Postgres persistence",
