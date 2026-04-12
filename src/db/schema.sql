@@ -106,3 +106,10 @@ CREATE TABLE IF NOT EXISTS ticket_events (
   payload JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS steam_update_states (
+  app_id BIGINT PRIMARY KEY,
+  last_seen_build_id TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

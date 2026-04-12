@@ -50,3 +50,8 @@ export interface TicketRepository {
   addEvent(event: TicketEvent): Promise<void>;
   listEvents(ticketId: string): Promise<TicketEvent[]>;
 }
+
+export interface SteamUpdateStateRepository {
+  getLastSeenBuilds(appIds: number[]): Promise<Map<number, string>>;
+  upsertLastSeenBuild(appId: number, buildId: string): Promise<void>;
+}

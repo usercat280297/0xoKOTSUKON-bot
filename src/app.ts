@@ -6,6 +6,7 @@ import { createPool } from "./db/pool";
 import { handleButtonInteraction, handleModalSubmitInteraction, handleStringSelectMenuInteraction } from "./interactions/router";
 import { PostgresGuildConfigRepository } from "./repositories/postgresGuildConfigRepository";
 import { PostgresPanelRepository } from "./repositories/postgresPanelRepository";
+import { PostgresSteamUpdateStateRepository } from "./repositories/postgresSteamUpdateStateRepository";
 import { PostgresTicketRepository } from "./repositories/postgresTicketRepository";
 import { BusinessHoursService } from "./services/businessHoursService";
 import { DiscordJsTicketGateway } from "./services/discordGateway";
@@ -40,6 +41,7 @@ export function createBotApp(env: BotEnv): BotApp {
 
   const guildConfigs = new PostgresGuildConfigRepository(pool);
   const panelRepository = new PostgresPanelRepository(pool);
+  const steamUpdateStates = new PostgresSteamUpdateStateRepository(pool);
   const ticketRepository = new PostgresTicketRepository(pool);
   const businessHours = new BusinessHoursService({
     timezone: env.ticketTimezone,
@@ -51,7 +53,7 @@ export function createBotApp(env: BotEnv): BotApp {
   const transcriptService = new TranscriptService();
   const selfRoleService = new SelfRoleService(gateway);
   const steamActivationScreenshots = new TesseractSteamActivationScreenshotService();
-  const steamUpdates = new SteamUpdateMonitorService(gateway, env.steamUpdates);
+  const steamUpdates = new SteamUpdateMonitorService(gateway, steamUpdateStates, env.steamUpdates);
   let deadlineSweepTimer: NodeJS.Timeout | null = null;
 
   const panelService = new PanelService(panelRepository, gateway);
