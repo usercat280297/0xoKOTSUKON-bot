@@ -14,7 +14,8 @@
     "register:commands:prod": "node dist/scripts/registerCommands.js",
     "db:init": "tsx src/scripts/applySchema.ts",
     "db:init:prod": "node dist/scripts/applySchema.js",
-    "seed:steam-denuvo": "tsx src/scripts/seedSteamDenuvoBoard.ts"
+    "seed:steam-denuvo": "tsx src/scripts/seedSteamDenuvoBoard.ts",
+    "publish:daily-checkin": "tsx src/scripts/publishDailyCheckinPanel.ts"
   },
   "engines": {
     "node": ">=22"

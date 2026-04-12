@@ -55,3 +55,9 @@ export interface SteamUpdateStateRepository {
   getLastSeenBuilds(appIds: number[]): Promise<Map<number, string>>;
   upsertLastSeenBuild(appId: number, buildId: string): Promise<void>;
 }
+
+export interface DailyCheckinRepository {
+  hasCheckinOnDate(guildId: string, userId: string, date: string): Promise<boolean>;
+  createCheckin(guildId: string, userId: string, date: string): Promise<void>;
+  listDatesForUser(guildId: string, userId: string): Promise<string[]>;
+}

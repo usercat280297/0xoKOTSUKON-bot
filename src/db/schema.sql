@@ -113,3 +113,14 @@ CREATE TABLE IF NOT EXISTS steam_update_states (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS daily_checkins (
+  guild_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  checkin_date DATE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (guild_id, user_id, checkin_date)
+);
+
+CREATE INDEX IF NOT EXISTS daily_checkins_guild_date_idx
+  ON daily_checkins(guild_id, checkin_date DESC);

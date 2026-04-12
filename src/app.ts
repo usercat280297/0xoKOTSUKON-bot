@@ -5,10 +5,12 @@ import { handleChatInputCommand } from "./commands/handleChatInputCommand";
 import { createPool } from "./db/pool";
 import { handleButtonInteraction, handleModalSubmitInteraction, handleStringSelectMenuInteraction } from "./interactions/router";
 import { PostgresGuildConfigRepository } from "./repositories/postgresGuildConfigRepository";
+import { PostgresDailyCheckinRepository } from "./repositories/postgresDailyCheckinRepository";
 import { PostgresPanelRepository } from "./repositories/postgresPanelRepository";
 import { PostgresSteamUpdateStateRepository } from "./repositories/postgresSteamUpdateStateRepository";
 import { PostgresTicketRepository } from "./repositories/postgresTicketRepository";
 import { BusinessHoursService } from "./services/businessHoursService";
+import { DailyCheckinService } from "./services/dailyCheckinService";
 import { DiscordJsTicketGateway } from "./services/discordGateway";
 import { PanelService } from "./services/panelService";
 import { PermissionService } from "./services/permissionService";
@@ -40,6 +42,7 @@ export function createBotApp(env: BotEnv): BotApp {
   const startedAt = new Date();
 
   const guildConfigs = new PostgresGuildConfigRepository(pool);
+  const dailyCheckins = new PostgresDailyCheckinRepository(pool);
   const panelRepository = new PostgresPanelRepository(pool);
   const steamUpdateStates = new PostgresSteamUpdateStateRepository(pool);
   const ticketRepository = new PostgresTicketRepository(pool);
@@ -52,6 +55,7 @@ export function createBotApp(env: BotEnv): BotApp {
   const permissionService = new PermissionService();
   const transcriptService = new TranscriptService();
   const selfRoleService = new SelfRoleService(gateway);
+  const dailyCheckinService = new DailyCheckinService(dailyCheckins, env.ticketTimezone);
   const steamActivationScreenshots = new TesseractSteamActivationScreenshotService();
   const steamUpdates = new SteamUpdateMonitorService(gateway, steamUpdateStates, env.steamUpdates);
   let deadlineSweepTimer: NodeJS.Timeout | null = null;
@@ -87,7 +91,8 @@ export function createBotApp(env: BotEnv): BotApp {
         await handleStringSelectMenuInteraction(interaction, {
           panels: panelService,
           tickets: ticketService,
-          selfRoles: selfRoleService
+          selfRoles: selfRoleService,
+          dailyCheckins: dailyCheckinService
         });
         return;
       }
@@ -96,7 +101,8 @@ export function createBotApp(env: BotEnv): BotApp {
         await handleButtonInteraction(interaction, {
           panels: panelService,
           tickets: ticketService,
-          selfRoles: selfRoleService
+          selfRoles: selfRoleService,
+          dailyCheckins: dailyCheckinService
         });
         return;
       }
@@ -105,7 +111,8 @@ export function createBotApp(env: BotEnv): BotApp {
         await handleModalSubmitInteraction(interaction, {
           panels: panelService,
           tickets: ticketService,
-          selfRoles: selfRoleService
+          selfRoles: selfRoleService,
+          dailyCheckins: dailyCheckinService
         });
       }
     } catch (error) {

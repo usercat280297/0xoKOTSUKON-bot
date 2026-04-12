@@ -13,6 +13,7 @@ import { PanelService } from "../services/panelService";
 import { TicketService } from "../services/ticketService";
 import {
   ComponentIds,
+  parseDailyCheckinButtonId,
   parseDonationPanelButtonId,
   parseDonationTicketButton,
   parsePanelResetId,
@@ -25,11 +26,13 @@ import {
 } from "../utils/componentIds";
 import { extractDisplayName, extractRoleIds, replyEphemeral } from "../utils/interactions";
 import { SelfRoleService } from "../services/selfRoleService";
+import { DailyCheckinService } from "../services/dailyCheckinService";
 
 export interface InteractionDependencies {
   panels: PanelService;
   tickets: TicketService;
   selfRoles: SelfRoleService;
+  dailyCheckins: DailyCheckinService;
 }
 
 export async function handleStringSelectMenuInteraction(
@@ -114,6 +117,13 @@ export async function handleButtonInteraction(
       roleId: selfRoleButton.roleId
     });
 
+    await replyEphemeral(interaction, result.message);
+    return;
+  }
+
+  const dailyCheckinButton = parseDailyCheckinButtonId(interaction.customId);
+  if (dailyCheckinButton) {
+    const result = await dependencies.dailyCheckins.checkIn(interaction.guildId!, interaction.user.id);
     await replyEphemeral(interaction, result.message);
     return;
   }

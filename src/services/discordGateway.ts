@@ -105,6 +105,7 @@ export interface SendSteamUpdateNotificationParams {
 
 export interface DiscordTicketGateway {
   sendPanelMessage(panel: TicketPanelWithOptions): Promise<string[]>;
+  sendDailyCheckinPanel(channelId: string): Promise<string>;
   createTicketChannel(params: CreateTicketChannelParams): Promise<CreateTicketChannelResult>;
   sendTicketIntro(params: SendTicketIntroParams): Promise<string>;
   updateTicketClaimState(channelId: string, ticketId: string, claimedBy: string): Promise<void>;
@@ -155,6 +156,29 @@ const DONATION_QR_ATTACHMENT_NAME = "donation-qr.webp";
 const QUICK_DETAIL_FALLBACK = "Not selected yet";
 const MAX_SELECTS_PER_MESSAGE = 2;
 const MAX_OPTIONS_PER_SELECT = 25;
+
+function buildDailyCheckinEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0x22c55e)
+    .setTitle("Điểm danh mỗi ngày")
+    .setDescription(
+      [
+        "Bấm nút bên dưới để điểm danh hôm nay.",
+        "",
+        "Mỗi ngày chỉ điểm danh được 1 lần.",
+        "Bot sẽ tự tính chuỗi điểm danh liên tiếp và tổng số ngày của bạn."
+      ].join("\n")
+    );
+}
+
+function buildDailyCheckinRow(): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(ComponentIds.dailyCheckinButton())
+      .setLabel("Điểm danh hôm nay")
+      .setStyle(ButtonStyle.Success)
+  );
+}
 
 function buildDefaultTicketControlContent(
   requesterId: string,
@@ -662,6 +686,15 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     }
 
     return finalIds;
+  }
+
+  public async sendDailyCheckinPanel(channelId: string): Promise<string> {
+    const channel = await this.getTextChannel(channelId);
+    const createdMessage = await channel.send({
+      embeds: [buildDailyCheckinEmbed()],
+      components: [buildDailyCheckinRow()]
+    });
+    return createdMessage.id;
   }
 
   public async createTicketChannel(params: CreateTicketChannelParams): Promise<CreateTicketChannelResult> {
