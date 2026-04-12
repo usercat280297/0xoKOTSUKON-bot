@@ -1,15 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildSteamNewsExcerpt,
-  isOfficialSteamNewsUrl,
-  isLikelyGameUpdate,
+  buildSteamDbPatchExcerpt,
   normalizeSteamUpdateTitle,
-  parseSteamPublicVersionPayload,
-  parseSteamStoreDetailsPayload,
   parseCuratorGamesHtml,
-  pickLatestRelevantNews,
-  selectTrackedGames,
-  type SteamNewsItem
+  parseSteamDbPatchnotesRss,
+  parseSteamStoreDetailsPayload,
+  selectTrackedGames
 } from "../src/services/steamUpdateMonitorService";
 
 describe("steamUpdateMonitorService helpers", () => {
@@ -66,46 +62,60 @@ describe("steamUpdateMonitorService helpers", () => {
     expect(selectTrackedGames(games, ["ea sports fc™ 26"])).toEqual([games[1]]);
   });
 
-  it("detects patch-like news and builds a short excerpt", () => {
-    const news: SteamNewsItem = {
-      gid: "abc",
-      title: "Hotfix 1.0.2 is live",
-      url: "https://steamcommunity.com/games/123/announcements/detail/456",
-      contents: "[h1]Patch Notes[/h1] Fixed crashing on startup and improved stability across all regions.",
-      date: 1775942400,
-      feedLabel: "Community Announcements"
-    };
-
-    expect(isLikelyGameUpdate(news)).toBe(true);
-    expect(pickLatestRelevantNews([news])).toEqual(news);
-    expect(buildSteamNewsExcerpt(news.contents)).toContain("Fixed crashing on startup");
-  });
-
-  it("uses only official steam news urls for patch notifications", () => {
-    const externalNews: SteamNewsItem = {
-      gid: "external",
-      title: "Patch 1.0 is live",
-      url: "https://gamemag.ru/news/example",
-      contents: "Patch notes mirrored on external press site.",
-      date: 1775942400,
-      feedLabel: "GameMag"
-    };
-    const steamNews: SteamNewsItem = {
-      gid: "steam",
-      title: "Patch 1.0 is live",
-      url: "https://steamcommunity.com/games/3764200/announcements/detail/1234567890",
-      contents: "Official patch notes on Steam.",
-      date: 1775942500,
-      feedLabel: "Community Announcements"
-    };
-
-    expect(isOfficialSteamNewsUrl(externalNews.url)).toBe(false);
-    expect(isOfficialSteamNewsUrl(steamNews.url)).toBe(true);
-    expect(pickLatestRelevantNews([externalNews, steamNews])).toEqual(steamNews);
-  });
-
   it("normalizes steam update titles with html entities", () => {
-    expect(normalizeSteamUpdateTitle("EA SPORTS FC&amp;#8482; 26")).toBe("EA SPORTS FC™ 26");
+    expect(normalizeSteamUpdateTitle("EA SPORTS FC&#8482; 26")).toBe("EA SPORTS FC™ 26");
+  });
+
+  it("builds a readable patch excerpt from SteamDB descriptions", () => {
+    expect(buildSteamDbPatchExcerpt("Notice of Update Distribution (SteamDB Build 22472737)")).toBe(
+      "Notice of Update Distribution (SteamDB Build 22472737)"
+    );
+  });
+
+  it("parses SteamDB patchnotes RSS items with build ids and thumbnails", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+      <rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" version="2.0">
+        <channel>
+          <title>SteamDB Builds for Resident Evil Requiem</title>
+          <item>
+            <guid isPermaLink="false">build#22472737</guid>
+            <title>Resident Evil Requiem update for 27 March 2026</title>
+            <link>https://steamdb.info/patchnotes/22472737/?utm_source=rss&amp;utm_medium=rss&amp;utm_campaign=Patchnotes</link>
+            <description>Notice of Update Distribution (SteamDB Build 22472737)</description>
+            <pubDate>Fri, 27 Mar 2026 01:00:31 +0000</pubDate>
+            <media:thumbnail width="1200" height="630" url="https://steamdb.info/patchnotes/22472737.png?_=1774577351"/>
+          </item>
+          <item>
+            <guid isPermaLink="false">build#22277314</guid>
+            <title>Resident Evil Requiem update for 13 March 2026</title>
+            <link>https://steamdb.info/patchnotes/22277314/?utm_source=rss&amp;utm_medium=rss&amp;utm_campaign=Patchnotes</link>
+            <description>SteamDB Build 22277314</description>
+            <pubDate>Fri, 13 Mar 2026 05:16:13 +0000</pubDate>
+            <media:thumbnail width="1200" height="630" url="https://steamdb.info/patchnotes/22277314.png?_=1773378973"/>
+          </item>
+        </channel>
+      </rss>`;
+
+    expect(parseSteamDbPatchnotesRss(xml)).toEqual([
+      {
+        guid: "build#22472737",
+        buildId: "22472737",
+        title: "Resident Evil Requiem update for 27 March 2026",
+        url: "https://steamdb.info/patchnotes/22472737/?utm_source=rss&utm_medium=rss&utm_campaign=Patchnotes",
+        description: "Notice of Update Distribution (SteamDB Build 22472737)",
+        date: 1774573231,
+        thumbnailUrl: "https://steamdb.info/patchnotes/22472737.png?_=1774577351"
+      },
+      {
+        guid: "build#22277314",
+        buildId: "22277314",
+        title: "Resident Evil Requiem update for 13 March 2026",
+        url: "https://steamdb.info/patchnotes/22277314/?utm_source=rss&utm_medium=rss&utm_campaign=Patchnotes",
+        description: "SteamDB Build 22277314",
+        date: 1773378973,
+        thumbnailUrl: "https://steamdb.info/patchnotes/22277314.png?_=1773378973"
+      }
+    ]);
   });
 
   it("parses steam store app details for richer notifications", () => {
@@ -130,22 +140,6 @@ describe("steamUpdateMonitorService helpers", () => {
       developers: ["Pearl Abyss"],
       publishers: ["Pearl Abyss"],
       genres: ["Action", "Adventure"]
-    });
-  });
-
-  it("parses steam public version payload", () => {
-    const payload = {
-      response: {
-        success: true,
-        up_to_date: false,
-        version_is_listable: true,
-        required_version: 22748572
-      }
-    };
-
-    expect(parseSteamPublicVersionPayload(payload)).toEqual({
-      buildId: "22748572",
-      versionIsListable: true
     });
   });
 });

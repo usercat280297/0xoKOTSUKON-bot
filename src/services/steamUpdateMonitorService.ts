@@ -6,13 +6,14 @@ export interface SteamTrackedGame {
   steamDbPatchnotesUrl: string;
 }
 
-export interface SteamNewsItem {
-  gid: string;
+export interface SteamDbPatchnotesItem {
+  guid: string;
+  buildId: string;
   title: string;
   url: string;
-  contents: string;
+  description: string;
   date: number;
-  feedLabel: string | null;
+  thumbnailUrl: string | null;
 }
 
 export interface SteamStoreDetails {
@@ -22,11 +23,6 @@ export interface SteamStoreDetails {
   developers: string[];
   publishers: string[];
   genres: string[];
-}
-
-export interface SteamPublicVersionInfo {
-  buildId: string | null;
-  versionIsListable: boolean;
 }
 
 export interface SteamUpdateMonitorConfig {
@@ -42,12 +38,11 @@ export interface SteamUpdateGateway {
   sendSteamUpdateNotification(params: {
     channelId: string;
     game: SteamTrackedGame;
-    news: SteamNewsItem | null;
+    patch: SteamDbPatchnotesItem;
     patchSummary: string;
     storeDetails: SteamStoreDetails | null;
     previousBuildId: string | null;
-    currentBuildId: string | null;
-    buildIdReliable: boolean;
+    currentBuildId: string;
     detectedAt: number;
   }): Promise<void>;
 }
@@ -55,21 +50,6 @@ export interface SteamUpdateGateway {
 const CURATOR_PAGE_SIZE = 100;
 const TRACKED_GAMES_REFRESH_MS = 6 * 60 * 60 * 1000;
 const SWEEP_CONCURRENCY = 12;
-const PATCH_KEYWORDS = [
-  "update",
-  "patch",
-  "hotfix",
-  "fix",
-  "fixed",
-  "changelog",
-  "release notes",
-  "maintenance",
-  "version",
-  "ver.",
-  "build",
-  "public branch",
-  "content update"
-];
 
 function decodeHtmlEntities(value: string): string {
   return value
@@ -82,8 +62,47 @@ function decodeHtmlEntities(value: string): string {
     .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCodePoint(parseInt(code, 16)));
 }
 
+function normalizeWhitespace(value: string): string {
+  return decodeHtmlEntities(value).replace(/\s+/g, " ").trim();
+}
+
+function stripCdata(value: string): string {
+  return value.replace(/^<!\[CDATA\[/, "").replace(/\]\]>$/, "").trim();
+}
+
+function readXmlTag(block: string, tag: string): string | null {
+  const match = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i").exec(block);
+  if (!match) {
+    return null;
+  }
+
+  return stripCdata(match[1]);
+}
+
+function readXmlAttribute(block: string, tag: string, attribute: string): string | null {
+  const match = new RegExp(`<${tag}\\b[^>]*\\b${attribute}="([^"]+)"[^>]*\\/?>`, "i").exec(block);
+  return match ? decodeHtmlEntities(match[1]) : null;
+}
+
+function parsePubDate(value: string | null): number {
+  if (!value) {
+    return Math.floor(Date.now() / 1000);
+  }
+
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return Math.floor(Date.now() / 1000);
+  }
+
+  return Math.floor(timestamp / 1000);
+}
+
+function buildSteamDbPatchLink(appId: number, buildId: string): string {
+  return `https://steamdb.info/patchnotes/${buildId}/?appid=${appId}`;
+}
+
 export function normalizeSteamUpdateTitle(title: string): string {
-  return decodeHtmlEntities(title).replace(/\s+/g, " ").trim();
+  return normalizeWhitespace(title);
 }
 
 export function parseCuratorGamesHtml(html: string): SteamTrackedGame[] {
@@ -100,10 +119,9 @@ export function parseCuratorGamesHtml(html: string): SteamTrackedGame[] {
     }
 
     seen.add(appId);
-    const title = normalizeSteamUpdateTitle(match.groups?.title ?? "");
     games.push({
       appId,
-      title,
+      title: normalizeSteamUpdateTitle(match.groups?.title ?? ""),
       storeUrl: decodeHtmlEntities(match.groups?.href ?? `https://store.steampowered.com/app/${appId}/`),
       imageUrl: match.groups?.image ? decodeHtmlEntities(match.groups.image) : null,
       steamDbPatchnotesUrl: `https://steamdb.info/app/${appId}/patchnotes/`
@@ -122,52 +140,48 @@ export function selectTrackedGames(games: SteamTrackedGame[], requestedTitles: s
   return games.filter((game) => requested.has(normalizeSteamUpdateTitle(game.title).toLowerCase()));
 }
 
-function stripSteamMarkup(value: string): string {
-  return decodeHtmlEntities(value)
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\[\*\]/g, "\n• ")
-    .replace(/\[url=[^\]]+\]([\s\S]*?)\[\/url\]/gi, "$1")
-    .replace(/\[\/?(?:h\d|list|olist|quote|b|i|u)\]/gi, " ")
-    .replace(/\[\/?[^\]]+\]/g, " ")
-    .replace(/https?:\/\/\S+/g, " ")
-    .split("\n")
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .join("\n");
-}
-
-export function isLikelyGameUpdate(news: SteamNewsItem): boolean {
-  const haystack = `${news.title} ${stripSteamMarkup(news.contents)}`.toLowerCase();
-  if (PATCH_KEYWORDS.some((keyword) => haystack.includes(keyword))) {
-    return true;
-  }
-
-  return /\bv?\d+\.\d+(\.\d+)?\b/.test(haystack);
-}
-
-export function isOfficialSteamNewsUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    const hostname = parsed.hostname.toLowerCase();
-    return hostname === "steamcommunity.com" || hostname.endsWith(".steamcommunity.com") || hostname === "store.steampowered.com";
-  } catch {
-    return false;
-  }
-}
-
-export function pickLatestRelevantNews(newsItems: SteamNewsItem[]): SteamNewsItem | null {
-  return newsItems.find((item) => isOfficialSteamNewsUrl(item.url) && isLikelyGameUpdate(item)) ?? null;
-}
-
-export function buildSteamNewsExcerpt(contents: string, maxLength = 260): string {
-  const cleaned = stripSteamMarkup(contents);
+export function buildSteamDbPatchExcerpt(description: string, maxLength = 260): string {
+  const cleaned = normalizeWhitespace(description);
   if (cleaned.length <= maxLength) {
     return cleaned;
   }
 
   return `${cleaned.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+export function parseSteamDbPatchnotesRss(xml: string, appId?: number): SteamDbPatchnotesItem[] {
+  const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].map((match) => match[1]);
+  const parsed = items
+    .map((item): SteamDbPatchnotesItem | null => {
+      const guid = normalizeWhitespace(readXmlTag(item, "guid") ?? "");
+      const title = normalizeWhitespace(readXmlTag(item, "title") ?? "");
+      const link = decodeHtmlEntities(readXmlTag(item, "link") ?? "");
+      const description = normalizeWhitespace(readXmlTag(item, "description") ?? "");
+      const pubDate = readXmlTag(item, "pubDate");
+      const thumbnailUrl = readXmlAttribute(item, "media:thumbnail", "url");
+      const buildIdFromGuid = /build#(\d+)/i.exec(guid)?.[1] ?? null;
+      const buildIdFromDescription = /build\s+(\d+)/i.exec(description)?.[1] ?? null;
+      const buildIdFromLink = /patchnotes\/(\d+)/i.exec(link)?.[1] ?? null;
+      const buildId = buildIdFromGuid ?? buildIdFromDescription ?? buildIdFromLink;
+
+      if (!guid || !title || !buildId) {
+        return null;
+      }
+
+      return {
+        guid,
+        buildId,
+        title,
+        url: link || (appId ? buildSteamDbPatchLink(appId, buildId) : ""),
+        description,
+        date: parsePubDate(pubDate),
+        thumbnailUrl
+      };
+    })
+    .filter((item): item is SteamDbPatchnotesItem => item !== null)
+    .sort((left, right) => right.date - left.date);
+
+  return parsed;
 }
 
 export function parseSteamStoreDetailsPayload(payload: unknown, appId: number): SteamStoreDetails | null {
@@ -210,37 +224,10 @@ export function parseSteamStoreDetailsPayload(payload: unknown, appId: number): 
   };
 }
 
-export function parseSteamPublicVersionPayload(payload: unknown): SteamPublicVersionInfo {
-  if (!payload || typeof payload !== "object") {
-    return {
-      buildId: null,
-      versionIsListable: false
-    };
-  }
-
-  const response = (payload as Record<string, unknown>).response;
-  if (!response || typeof response !== "object") {
-    return {
-      buildId: null,
-      versionIsListable: false
-    };
-  }
-
-  const responseRecord = response as Record<string, unknown>;
-  const requiredVersion = responseRecord.required_version;
-
-  return {
-    buildId:
-      typeof requiredVersion === "number" || typeof requiredVersion === "string" ? String(requiredVersion) : null,
-    versionIsListable: responseRecord.version_is_listable === true
-  };
-}
-
 export class SteamUpdateMonitorService {
   private timer: NodeJS.Timeout | null = null;
   private trackedGames: SteamTrackedGame[] = [];
-  private knownNewsByAppId = new Map<number, string>();
-  private knownBuildByAppId = new Map<number, string>();
+  private knownLatestBuildByAppId = new Map<number, string>();
   private lastCatalogRefreshAt = 0;
   private nextCursor = 0;
   private sweepRunning = false;
@@ -320,12 +307,8 @@ export class SteamUpdateMonitorService {
     }
 
     await this.runWithConcurrency(this.trackedGames, SWEEP_CONCURRENCY, async (game) => {
-      const [latest, buildInfo] = await Promise.all([
-        this.fetchLatestRelevantNews(game.appId),
-        this.fetchCurrentPublicVersion(game.appId)
-      ]);
-      this.knownNewsByAppId.set(game.appId, latest?.gid ?? "");
-      this.knownBuildByAppId.set(game.appId, buildInfo.buildId ?? "");
+      const patches = await this.fetchSteamDbPatchnotes(game.appId);
+      this.knownLatestBuildByAppId.set(game.appId, patches[0]?.buildId ?? "");
     });
   }
 
@@ -407,94 +390,61 @@ export class SteamUpdateMonitorService {
   }
 
   private async checkGame(game: SteamTrackedGame): Promise<void> {
-    const [latest, buildInfo] = await Promise.all([
-      this.fetchLatestRelevantNews(game.appId),
-      this.fetchCurrentPublicVersion(game.appId)
-    ]);
-    const knownGid = this.knownNewsByAppId.get(game.appId);
-    const knownBuildId = this.knownBuildByAppId.get(game.appId) ?? "";
-    const currentBuildId = buildInfo.buildId ?? "";
-
-    if (!latest) {
-      if (knownGid === undefined) {
-        this.knownNewsByAppId.set(game.appId, "");
+    const patches = await this.fetchSteamDbPatchnotes(game.appId);
+    const latestPatch = patches[0] ?? null;
+    if (!latestPatch) {
+      if (!this.knownLatestBuildByAppId.has(game.appId)) {
+        this.knownLatestBuildByAppId.set(game.appId, "");
       }
-    } else if (knownGid === undefined) {
-      this.knownNewsByAppId.set(game.appId, latest.gid);
-    }
-
-    if (!this.knownBuildByAppId.has(game.appId)) {
-      this.knownBuildByAppId.set(game.appId, currentBuildId);
-    }
-
-    const newsChanged = Boolean(latest && knownGid !== undefined && latest.gid !== knownGid);
-    const buildChanged = currentBuildId.length > 0 && currentBuildId !== knownBuildId;
-
-    if (!buildChanged && !(newsChanged && currentBuildId.length === 0)) {
       return;
     }
 
-    this.knownNewsByAppId.set(game.appId, latest?.gid ?? "");
-    this.knownBuildByAppId.set(game.appId, currentBuildId);
+    const knownLatestBuildId = this.knownLatestBuildByAppId.get(game.appId);
+    if (knownLatestBuildId === undefined) {
+      this.knownLatestBuildByAppId.set(game.appId, latestPatch.buildId);
+      return;
+    }
+
+    if (knownLatestBuildId === latestPatch.buildId) {
+      return;
+    }
+
+    this.knownLatestBuildByAppId.set(game.appId, latestPatch.buildId);
 
     const storeDetails = await this.fetchSteamStoreDetails(game.appId).catch((error) => {
       console.warn(`Failed to fetch Steam store details for app ${game.appId}.`, error);
       return null;
     });
 
+    const previousBuildId = patches[1]?.buildId ?? (knownLatestBuildId.length > 0 ? knownLatestBuildId : null);
+
     await this.gateway.sendSteamUpdateNotification({
       channelId: this.config.channelId!,
       game,
-      news: latest,
-      patchSummary: latest
-        ? buildSteamNewsExcerpt(latest.contents, 900)
-        : "Steam ghi nhận public version mới nhưng chưa thấy patch notes chính thức trong Steam News.",
+      patch: latestPatch,
+      patchSummary: buildSteamDbPatchExcerpt(latestPatch.description, 900),
       storeDetails,
-      previousBuildId: knownBuildId.length > 0 ? knownBuildId : null,
-      currentBuildId: currentBuildId.length > 0 ? currentBuildId : null,
-      buildIdReliable: buildInfo.versionIsListable,
-      detectedAt: latest?.date ?? Math.floor(Date.now() / 1000)
+      previousBuildId,
+      currentBuildId: latestPatch.buildId,
+      detectedAt: latestPatch.date
     });
   }
 
-  private async fetchLatestRelevantNews(appId: number): Promise<SteamNewsItem | null> {
-    const url = new URL("https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/");
+  private async fetchSteamDbPatchnotes(appId: number): Promise<SteamDbPatchnotesItem[]> {
+    const url = new URL("https://steamdb.info/api/PatchnotesRSS/");
     url.searchParams.set("appid", String(appId));
-    url.searchParams.set("count", "5");
-    url.searchParams.set("maxlength", "600");
 
     const response = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; 0xoKITSU-ticket-bot/1.0)"
+        "User-Agent": "Mozilla/5.0 (compatible; 0xoKITSU-ticket-bot/1.0)",
+        "Accept-Language": "en-US,en;q=0.9"
       }
     });
     if (!response.ok) {
-      throw new Error(`Failed to fetch Steam news for app ${appId}: ${response.status} ${response.statusText}`);
+      throw new Error(`Failed to fetch SteamDB patchnotes RSS for app ${appId}: ${response.status} ${response.statusText}`);
     }
 
-    const payload = (await response.json()) as {
-      appnews?: {
-        newsitems?: Array<{
-          gid: string;
-          title: string;
-          url: string;
-          contents: string;
-          date: number;
-          feedlabel?: string;
-        }>;
-      };
-    };
-
-    const newsItems: SteamNewsItem[] = (payload.appnews?.newsitems ?? []).map((item) => ({
-      gid: String(item.gid),
-      title: decodeHtmlEntities(item.title),
-      url: item.url,
-      contents: item.contents,
-      date: item.date,
-      feedLabel: item.feedlabel ?? null
-    }));
-
-    return pickLatestRelevantNews(newsItems);
+    return parseSteamDbPatchnotesRss(await response.text(), appId);
   }
 
   private async fetchSteamStoreDetails(appId: number): Promise<SteamStoreDetails | null> {
@@ -514,25 +464,5 @@ export class SteamUpdateMonitorService {
     }
 
     return parseSteamStoreDetailsPayload(await response.json(), appId);
-  }
-
-  private async fetchCurrentPublicVersion(appId: number): Promise<SteamPublicVersionInfo> {
-    const url = new URL("https://api.steampowered.com/ISteamApps/UpToDateCheck/v1/");
-    url.searchParams.set("appid", String(appId));
-    url.searchParams.set("version", "0");
-
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; 0xoKITSU-ticket-bot/1.0)"
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to fetch Steam public version for app ${appId}: ${response.status} ${response.statusText}`
-      );
-    }
-
-    return parseSteamPublicVersionPayload(await response.json());
   }
 }

@@ -9,6 +9,7 @@ import {
   GuildMember,
   Message,
   PermissionFlagsBits,
+  NewsChannel,
   StringSelectMenuBuilder,
   TextChannel
 } from "discord.js";
@@ -79,14 +80,15 @@ export interface SendSteamUpdateNotificationParams {
     imageUrl: string | null;
     steamDbPatchnotesUrl: string;
   };
-  news: {
-    gid: string;
+  patch: {
+    guid: string;
+    buildId: string;
     title: string;
     url: string;
-    contents: string;
-      date: number;
-      feedLabel: string | null;
-  } | null;
+    description: string;
+    date: number;
+    thumbnailUrl: string | null;
+  };
   patchSummary: string;
   storeDetails: {
     shortDescription: string | null;
@@ -97,8 +99,7 @@ export interface SendSteamUpdateNotificationParams {
     genres: string[];
   } | null;
   previousBuildId: string | null;
-  currentBuildId: string | null;
-  buildIdReliable: boolean;
+  currentBuildId: string;
   detectedAt: number;
 }
 
@@ -371,21 +372,19 @@ function buildSteamUpdateEmbed(params: SendSteamUpdateNotificationParams): Embed
   ].filter((line): line is string => Boolean(line));
 
   const buildLabel =
-    params.previousBuildId && params.currentBuildId && params.previousBuildId !== params.currentBuildId
-      ? `\`${params.previousBuildId}\` → \`${params.currentBuildId}\``
-      : params.currentBuildId
-        ? `Current: \`${params.currentBuildId}\``
-        : "Steam did not expose a public version number for this update.";
+    params.previousBuildId && params.previousBuildId !== params.currentBuildId
+      ? `\`${params.previousBuildId}\` -> \`${params.currentBuildId}\``
+      : `Current: \`${params.currentBuildId}\``;
 
   const embed = new EmbedBuilder()
     .setColor(0xe879f9)
     .setTitle(`Steam Update • ${params.game.title}`)
-    .setURL(params.news?.url ?? params.game.storeUrl)
+    .setURL(params.patch.url)
     .setDescription(
       [
-        `**Patch:** ${params.news?.title ?? "Public build changed on Steam"}`,
+        `**Patch:** ${params.patch.title}`,
         "",
-        truncateForField(params.patchSummary, 1200) ?? "No official patch notes were published in Steam News."
+        truncateForField(params.patchSummary, 1200) ?? "SteamDB recorded a new build for this game."
       ].join("\n")
     )
     .addFields(
@@ -395,7 +394,7 @@ function buildSteamUpdateEmbed(params: SendSteamUpdateNotificationParams): Embed
         inline: false
       },
       {
-        name: params.buildIdReliable ? "Public Build" : "Public Version",
+        name: "Build ID Change",
         value: buildLabel,
         inline: false
       },
@@ -413,9 +412,7 @@ function buildSteamUpdateEmbed(params: SendSteamUpdateNotificationParams): Embed
       }
     )
     .setFooter({
-      text: params.news?.feedLabel
-        ? `Source: ${params.news.feedLabel}`
-        : "Source: Steam official app/news data"
+      text: "Source: SteamDB RSS + Steam Store"
     });
 
   if (params.storeDetails?.headerImageUrl) {
@@ -424,7 +421,9 @@ function buildSteamUpdateEmbed(params: SendSteamUpdateNotificationParams): Embed
     embed.setImage(params.game.imageUrl);
   }
 
-  if (params.storeDetails?.capsuleImageUrl) {
+  if (params.patch.thumbnailUrl) {
+    embed.setThumbnail(params.patch.thumbnailUrl);
+  } else if (params.storeDetails?.capsuleImageUrl) {
     embed.setThumbnail(params.storeDetails.capsuleImageUrl);
   } else if (params.game.imageUrl) {
     embed.setThumbnail(params.game.imageUrl);
@@ -436,9 +435,9 @@ function buildSteamUpdateEmbed(params: SendSteamUpdateNotificationParams): Embed
 function buildSteamUpdateRow(params: SendSteamUpdateNotificationParams): ActionRowBuilder<ButtonBuilder> {
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setLabel(params.news ? "View Patch Notes" : "Open Store Page")
+      .setLabel("View Patch Notes")
       .setStyle(ButtonStyle.Link)
-      .setURL(params.news?.url ?? params.game.storeUrl),
+      .setURL(params.patch.url),
     new ButtonBuilder().setLabel("Steam Store").setStyle(ButtonStyle.Link).setURL(params.game.storeUrl),
     new ButtonBuilder().setLabel("SteamDB History").setStyle(ButtonStyle.Link).setURL(params.game.steamDbPatchnotesUrl)
   );
@@ -1044,9 +1043,9 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     return `<#${channelId}>`;
   }
 
-  private async getTextChannel(channelId: string): Promise<TextChannel> {
+  private async getTextChannel(channelId: string): Promise<TextChannel | NewsChannel> {
     const channel = await this.client.channels.fetch(channelId);
-    if (!channel || !(channel instanceof TextChannel)) {
+    if (!channel || (!(channel instanceof TextChannel) && !(channel instanceof NewsChannel))) {
       throw new Error(`Channel ${channelId} is not a text channel.`);
     }
 
@@ -1058,7 +1057,7 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     const messages = await channel.messages.fetch({ limit: 50 });
 
     return (
-      messages.find((message) =>
+      messages.find((message: Message) =>
         message.components.some(
           (row) =>
             rowContainsCustomId(row, ComponentIds.claimButton(ticketId)) ||
@@ -1073,7 +1072,7 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     const messages = await channel.messages.fetch({ limit: 50 });
 
     return (
-      messages.find((message) =>
+      messages.find((message: Message) =>
         message.components.some((row) => rowContainsCustomId(row, ComponentIds.activationButton(ticketId)))
       ) ?? null
     );
@@ -1084,7 +1083,7 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     const messages = await channel.messages.fetch({ limit: 50 });
 
     return (
-      messages.find((message) =>
+      messages.find((message: Message) =>
         message.components.some(
           (row) =>
             rowContainsCustomId(row, ComponentIds.tokenActivatedButton(ticketId)) ||
@@ -1099,7 +1098,7 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     const messages = await channel.messages.fetch({ limit: 50 });
 
     return (
-      messages.find((message) =>
+      messages.find((message: Message) =>
         message.components.some((row) => rowContainsCustomId(row, ComponentIds.donationConfirmButton(ticketId)))
       ) ?? null
     );
