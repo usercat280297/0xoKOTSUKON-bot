@@ -176,6 +176,7 @@ function buildDailyCheckinRow(): ActionRowBuilder<ButtonBuilder> {
     new ButtonBuilder()
       .setCustomId(ComponentIds.dailyCheckinButton())
       .setLabel("Điểm danh hôm nay")
+      .setEmoji({ id: "1492817035674124359" })
       .setStyle(ButtonStyle.Success)
   );
 }
