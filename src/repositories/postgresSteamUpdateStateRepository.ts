@@ -23,6 +23,26 @@ export class PostgresSteamUpdateStateRepository implements SteamUpdateStateRepos
     );
   }
 
+  public async getLastNotifiedBuilds(appIds: number[]): Promise<Map<number, string>> {
+    if (appIds.length === 0) {
+      return new Map();
+    }
+
+    const result = await this.pool.query(
+      `
+        SELECT app_id, last_notified_build_id
+        FROM steam_update_states
+        WHERE app_id = ANY($1::bigint[])
+          AND last_notified_build_id IS NOT NULL
+      `,
+      [appIds]
+    );
+
+    return new Map(
+      result.rows.map((row) => [Number(row.app_id), String(row.last_notified_build_id)])
+    );
+  }
+
   public async upsertLastSeenBuild(appId: number, buildId: string): Promise<void> {
     await this.pool.query(
       `
@@ -32,6 +52,22 @@ export class PostgresSteamUpdateStateRepository implements SteamUpdateStateRepos
         DO UPDATE
         SET
           last_seen_build_id = EXCLUDED.last_seen_build_id,
+          updated_at = NOW()
+      `,
+      [appId, buildId]
+    );
+  }
+
+  public async upsertLastNotifiedBuild(appId: number, buildId: string): Promise<void> {
+    await this.pool.query(
+      `
+        INSERT INTO steam_update_states (app_id, last_seen_build_id, last_notified_build_id)
+        VALUES ($1, $2, $2)
+        ON CONFLICT (app_id)
+        DO UPDATE
+        SET
+          last_seen_build_id = EXCLUDED.last_seen_build_id,
+          last_notified_build_id = EXCLUDED.last_notified_build_id,
           updated_at = NOW()
       `,
       [appId, buildId]

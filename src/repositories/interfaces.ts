@@ -53,7 +53,9 @@ export interface TicketRepository {
 
 export interface SteamUpdateStateRepository {
   getLastSeenBuilds(appIds: number[]): Promise<Map<number, string>>;
+  getLastNotifiedBuilds(appIds: number[]): Promise<Map<number, string>>;
   upsertLastSeenBuild(appId: number, buildId: string): Promise<void>;
+  upsertLastNotifiedBuild(appId: number, buildId: string): Promise<void>;
 }
 
 export interface DailyCheckinRepository {

@@ -110,9 +110,13 @@ CREATE TABLE IF NOT EXISTS ticket_events (
 CREATE TABLE IF NOT EXISTS steam_update_states (
   app_id BIGINT PRIMARY KEY,
   last_seen_build_id TEXT NOT NULL,
+  last_notified_build_id TEXT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE steam_update_states
+  ADD COLUMN IF NOT EXISTS last_notified_build_id TEXT NULL;
 
 CREATE TABLE IF NOT EXISTS daily_checkins (
   guild_id TEXT NOT NULL,

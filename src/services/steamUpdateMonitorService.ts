@@ -52,6 +52,7 @@ export interface SteamUpdateGateway {
 const CURATOR_PAGE_SIZE = 100;
 const TRACKED_GAMES_REFRESH_MS = 6 * 60 * 60 * 1000;
 const SWEEP_CONCURRENCY = 12;
+const RECENT_PATCH_CATCHUP_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 function decodeHtmlEntities(value: string): string {
   return value
@@ -151,6 +152,14 @@ export function buildSteamDbPatchExcerpt(description: string, maxLength = 260): 
   return `${cleaned.slice(0, maxLength - 3).trimEnd()}...`;
 }
 
+export function shouldBackfillSteamPatchNotification(
+  latestPatch: SteamDbPatchnotesItem,
+  now = Date.now(),
+  catchupWindowMs = RECENT_PATCH_CATCHUP_WINDOW_MS
+): boolean {
+  return latestPatch.date * 1000 >= now - catchupWindowMs;
+}
+
 export function parseSteamDbPatchnotesRss(xml: string, appId?: number): SteamDbPatchnotesItem[] {
   const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].map((match) => match[1]);
   const parsed = items
@@ -230,6 +239,7 @@ export class SteamUpdateMonitorService {
   private timer: NodeJS.Timeout | null = null;
   private trackedGames: SteamTrackedGame[] = [];
   private knownLatestBuildByAppId = new Map<number, string>();
+  private lastNotifiedBuildByAppId = new Map<number, string>();
   private lastCatalogRefreshAt = 0;
   private nextCursor = 0;
   private sweepRunning = false;
@@ -307,9 +317,16 @@ export class SteamUpdateMonitorService {
   }
 
   private async restoreKnownStateFromStore(): Promise<void> {
-    const persisted = await this.stateRepository.getLastSeenBuilds(this.trackedGames.map((game) => game.appId));
-    for (const [appId, buildId] of persisted) {
+    const appIds = this.trackedGames.map((game) => game.appId);
+    const persistedSeen = await this.stateRepository.getLastSeenBuilds(appIds);
+    const persistedNotified = await this.stateRepository.getLastNotifiedBuilds(appIds);
+
+    for (const [appId, buildId] of persistedSeen) {
       this.knownLatestBuildByAppId.set(appId, buildId);
+    }
+
+    for (const [appId, buildId] of persistedNotified) {
+      this.lastNotifiedBuildByAppId.set(appId, buildId);
     }
   }
 
@@ -318,24 +335,30 @@ export class SteamUpdateMonitorService {
       return;
     }
 
-    await this.runWithConcurrency(this.trackedGames, SWEEP_CONCURRENCY, async (game) => {
-      if (this.knownLatestBuildByAppId.has(game.appId)) {
-        return;
-      }
+    await this.runWithConcurrency(
+      this.trackedGames,
+      SWEEP_CONCURRENCY,
+      async (game) => {
+        if (this.knownLatestBuildByAppId.has(game.appId)) {
+          return;
+        }
 
-      const patches = await this.fetchSteamDbPatchnotes(game.appId);
-      const latestBuildId = patches[0]?.buildId ?? "";
-      this.knownLatestBuildByAppId.set(game.appId, latestBuildId);
-      if (latestBuildId.length > 0) {
-        await this.stateRepository.upsertLastSeenBuild(game.appId, latestBuildId);
-      }
-    });
+        const patches = await this.fetchSteamDbPatchnotes(game.appId);
+        const latestBuildId = patches[0]?.buildId ?? "";
+        this.knownLatestBuildByAppId.set(game.appId, latestBuildId);
+        if (latestBuildId.length > 0) {
+          await this.stateRepository.upsertLastSeenBuild(game.appId, latestBuildId);
+        }
+      },
+      (game) => `${game.title} (${game.appId})`
+    );
   }
 
   private async runWithConcurrency<T>(
     items: readonly T[],
     concurrency: number,
-    worker: (item: T) => Promise<void>
+    worker: (item: T) => Promise<void>,
+    describeItem?: (item: T) => string
   ): Promise<void> {
     if (items.length === 0) {
       return;
@@ -352,7 +375,8 @@ export class SteamUpdateMonitorService {
         try {
           await worker(item);
         } catch (error) {
-          console.error("Steam update worker failed.", error);
+          const label = describeItem ? describeItem(item) : "item";
+          console.warn(`Steam update worker failed for ${label}.`, error);
         }
       }
     });
@@ -424,12 +448,23 @@ export class SteamUpdateMonitorService {
     }
 
     const knownLatestBuildId = this.knownLatestBuildByAppId.get(game.appId);
+    const lastNotifiedBuildId = this.lastNotifiedBuildByAppId.get(game.appId) ?? null;
     if (knownLatestBuildId === undefined) {
       this.knownLatestBuildByAppId.set(game.appId, latestPatch.buildId);
+      await this.stateRepository.upsertLastSeenBuild(game.appId, latestPatch.buildId);
       return;
     }
 
-    if (knownLatestBuildId === latestPatch.buildId) {
+    if (lastNotifiedBuildId === latestPatch.buildId) {
+      return;
+    }
+
+    if (
+      knownLatestBuildId === latestPatch.buildId &&
+      !shouldBackfillSteamPatchNotification(latestPatch)
+    ) {
+      this.lastNotifiedBuildByAppId.set(game.appId, latestPatch.buildId);
+      await this.stateRepository.upsertLastNotifiedBuild(game.appId, latestPatch.buildId);
       return;
     }
 
@@ -452,8 +487,10 @@ export class SteamUpdateMonitorService {
     });
 
     this.knownLatestBuildByAppId.set(game.appId, latestPatch.buildId);
+    this.lastNotifiedBuildByAppId.set(game.appId, latestPatch.buildId);
     try {
       await this.stateRepository.upsertLastSeenBuild(game.appId, latestPatch.buildId);
+      await this.stateRepository.upsertLastNotifiedBuild(game.appId, latestPatch.buildId);
     } catch (error) {
       console.error(`Failed to persist Steam update state for app ${game.appId}.`, error);
     }

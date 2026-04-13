@@ -6,6 +6,7 @@ import {
   parseCuratorGamesHtml,
   parseSteamDbPatchnotesRss,
   parseSteamStoreDetailsPayload,
+  shouldBackfillSteamPatchNotification,
   selectTrackedGames
 } from "../src/services/steamUpdateMonitorService";
 
@@ -165,7 +166,9 @@ describe("steamUpdateMonitorService helpers", () => {
       },
       {
         getLastSeenBuilds: vi.fn().mockResolvedValue(new Map()),
-        upsertLastSeenBuild: vi.fn().mockResolvedValue(undefined)
+        getLastNotifiedBuilds: vi.fn().mockResolvedValue(new Map()),
+        upsertLastSeenBuild: vi.fn().mockResolvedValue(undefined),
+        upsertLastNotifiedBuild: vi.fn().mockResolvedValue(undefined)
       },
       {
         enabled: true,
@@ -180,5 +183,39 @@ describe("steamUpdateMonitorService helpers", () => {
     const patches = await (service as any).fetchSteamDbPatchnotes(4115450);
 
     expect(patches).toEqual([]);
+  });
+
+  it("backfills recent patches but ignores stale ones when no notification was sent yet", () => {
+    const now = Date.parse("2026-04-13T12:00:00.000Z");
+
+    expect(
+      shouldBackfillSteamPatchNotification(
+        {
+          guid: "build#1",
+          buildId: "1",
+          title: "Recent update",
+          url: "https://steamdb.info/patchnotes/1/",
+          description: "Recent build",
+          date: Math.floor(Date.parse("2026-04-10T12:00:00.000Z") / 1000),
+          thumbnailUrl: null
+        },
+        now
+      )
+    ).toBe(true);
+
+    expect(
+      shouldBackfillSteamPatchNotification(
+        {
+          guid: "build#2",
+          buildId: "2",
+          title: "Old update",
+          url: "https://steamdb.info/patchnotes/2/",
+          description: "Old build",
+          date: Math.floor(Date.parse("2026-03-20T12:00:00.000Z") / 1000),
+          thumbnailUrl: null
+        },
+        now
+      )
+    ).toBe(false);
   });
 });
