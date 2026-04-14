@@ -25,6 +25,14 @@ export interface BotEnv {
     batchSize: number;
     games: string[];
   };
+  freeGames: {
+    enabled: boolean;
+    steamChannelId: string | null;
+    epicChannelId: string | null;
+    pollIntervalMs: number;
+    countryCode: string;
+    locale: string;
+  };
 }
 
 const DEFAULT_STEAM_UPDATE_CHANNELS: Record<string, string> = {
@@ -33,6 +41,14 @@ const DEFAULT_STEAM_UPDATE_CHANNELS: Record<string, string> = {
 
 const DEFAULT_DAILY_CHECKIN_LOG_CHANNELS: Record<string, string> = {
   "1492076309323714570": "1492851767711502409"
+};
+
+const DEFAULT_STEAM_FREE_GAME_CHANNELS: Record<string, string> = {
+  "1492076309323714570": "1492115864848433222"
+};
+
+const DEFAULT_EPIC_FREE_GAME_CHANNELS: Record<string, string> = {
+  "1492076309323714570": "1492115804953641055"
 };
 
 function requireEnv(name: string): string {
@@ -56,15 +72,24 @@ export function getBotEnv(): BotEnv {
   const steamUpdateChannelId =
     process.env.STEAM_UPDATES_CHANNEL_ID ??
     (process.env.DISCORD_GUILD_ID ? DEFAULT_STEAM_UPDATE_CHANNELS[process.env.DISCORD_GUILD_ID] ?? null : null);
+  const steamFreeGamesChannelId =
+    process.env.STEAM_FREE_GAMES_CHANNEL_ID ??
+    (process.env.DISCORD_GUILD_ID ? DEFAULT_STEAM_FREE_GAME_CHANNELS[process.env.DISCORD_GUILD_ID] ?? null : null);
+  const epicFreeGamesChannelId =
+    process.env.EPIC_FREE_GAMES_CHANNEL_ID ??
+    (process.env.DISCORD_GUILD_ID ? DEFAULT_EPIC_FREE_GAME_CHANNELS[process.env.DISCORD_GUILD_ID] ?? null : null);
   const dailyCheckinLogChannelId =
     process.env.DAILY_CHECKIN_LOG_CHANNEL_ID ??
     (process.env.DISCORD_GUILD_ID ? DEFAULT_DAILY_CHECKIN_LOG_CHANNELS[process.env.DISCORD_GUILD_ID] ?? null : null);
   const steamUpdatePollMinutes = Number(process.env.STEAM_UPDATE_POLL_MINUTES ?? "1");
   const steamUpdateBatchSize = Number(process.env.STEAM_UPDATE_BATCH_SIZE ?? "120");
+  const freeGamesPollMinutes = Number(process.env.FREE_GAMES_POLL_MINUTES ?? "10");
   const steamUpdateGames = (process.env.STEAM_UPDATE_GAMES ?? "")
     .split("|")
     .map((value) => value.trim())
     .filter(Boolean);
+  const freeGamesCountryCode = (process.env.FREE_GAMES_COUNTRY_CODE ?? "VN").trim().toUpperCase();
+  const freeGamesLocale = (process.env.FREE_GAMES_LOCALE ?? "vi").trim();
 
   if (!Number.isInteger(ticketHoursStart) || ticketHoursStart < 0 || ticketHoursStart > 23) {
     throw new Error("TICKET_HOURS_START must be an integer between 0 and 23.");
@@ -94,6 +119,10 @@ export function getBotEnv(): BotEnv {
     throw new Error("STEAM_UPDATE_BATCH_SIZE must be a positive integer.");
   }
 
+  if (!Number.isFinite(freeGamesPollMinutes) || freeGamesPollMinutes <= 0) {
+    throw new Error("FREE_GAMES_POLL_MINUTES must be a positive number.");
+  }
+
   return {
     discordToken: requireEnv("DISCORD_TOKEN"),
     discordApplicationId: requireEnv("DISCORD_APPLICATION_ID"),
@@ -116,6 +145,14 @@ export function getBotEnv(): BotEnv {
       pollIntervalMs: Math.round(steamUpdatePollMinutes * 60_000),
       batchSize: steamUpdateBatchSize,
       games: steamUpdateGames
+    },
+    freeGames: {
+      enabled: Boolean(steamFreeGamesChannelId || epicFreeGamesChannelId),
+      steamChannelId: steamFreeGamesChannelId,
+      epicChannelId: epicFreeGamesChannelId,
+      pollIntervalMs: Math.round(freeGamesPollMinutes * 60_000),
+      countryCode: freeGamesCountryCode,
+      locale: freeGamesLocale
     }
   };
 }

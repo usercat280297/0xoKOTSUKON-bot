@@ -18,6 +18,7 @@ import type {
   CreateTicketChannelResult,
   SendDonationPromptParams,
   SendDonationThanksParams,
+  SendFreeGameNotificationParams,
   SendSteamUpdateNotificationParams,
   SendActivationTokenPanelParams,
   SendLogParams,
@@ -247,6 +248,7 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
   public issueUpdates: Array<{ channelId: string; ticketId: string; issueValue: string; issueLabel: string }> = [];
   public channelMessages: Array<{ channelId: string; content: string }> = [];
   public donationPrompts: SendDonationPromptParams[] = [];
+  public freeGameNotifications: SendFreeGameNotificationParams[] = [];
   public steamUpdateNotifications: SendSteamUpdateNotificationParams[] = [];
   public donationIntentUpdates: Array<{ channelId: string; ticketId: string }> = [];
   public donationApprovalUpdates: Array<{ channelId: string; ticketId: string; approvedBy: string }> = [];
@@ -305,6 +307,10 @@ export class FakeDiscordGateway implements DiscordTicketGateway {
 
   public async sendSteamUpdateNotification(params: SendSteamUpdateNotificationParams): Promise<void> {
     this.steamUpdateNotifications.push(params);
+  }
+
+  public async sendFreeGameNotification(params: SendFreeGameNotificationParams): Promise<void> {
+    this.freeGameNotifications.push(params);
   }
 
   public async markDonationIntentState(channelId: string, ticketId: string): Promise<void> {

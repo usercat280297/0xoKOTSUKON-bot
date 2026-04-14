@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { ticketIssueCatalog } from "../config/ticketIssueCatalog";
 import type { GuildConfig, PanelTemplate, TicketOption, TicketPanelWithOptions, TranscriptMessage } from "../domain/types";
 import type { BusinessHoursService } from "./businessHoursService";
+import type { FreeGameOffer } from "./freeGameMonitorService";
 import { ComponentIds } from "../utils/componentIds";
 import { slugifyTicketName } from "../utils/formatters";
 
@@ -103,6 +104,11 @@ export interface SendSteamUpdateNotificationParams {
   detectedAt: number;
 }
 
+export interface SendFreeGameNotificationParams {
+  channelId: string;
+  offer: FreeGameOffer;
+}
+
 export interface DiscordTicketGateway {
   sendPanelMessage(panel: TicketPanelWithOptions): Promise<string[]>;
   sendDailyCheckinPanel(channelId: string): Promise<string>;
@@ -113,6 +119,7 @@ export interface DiscordTicketGateway {
   sendChannelMessage(channelId: string, content: string): Promise<void>;
   sendDonationPrompt(params: SendDonationPromptParams): Promise<void>;
   sendSteamUpdateNotification(params: SendSteamUpdateNotificationParams): Promise<void>;
+  sendFreeGameNotification(params: SendFreeGameNotificationParams): Promise<void>;
   markDonationIntentState(channelId: string, ticketId: string): Promise<void>;
   markDonationApprovedState(channelId: string, ticketId: string, approvedBy: string): Promise<void>;
   sendDonationThanks(params: SendDonationThanksParams): Promise<string>;
@@ -469,6 +476,76 @@ function buildSteamUpdateRow(params: SendSteamUpdateNotificationParams): ActionR
   );
 
   return row;
+}
+
+function buildFreeGameEmbed(params: SendFreeGameNotificationParams): EmbedBuilder {
+  const platformLabel = params.offer.platform === "steam" ? "Steam" : "Epic Games";
+  const color = params.offer.platform === "steam" ? 0x2563eb : 0x22c55e;
+  const embed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle(params.offer.title)
+    .setURL(params.offer.storeUrl)
+    .setDescription(
+      [
+        `**Giá gốc:** \`${params.offer.originalPriceText}\` - ${STEAM_UPDATE_BUILD_ARROW}`,
+        "## 0đ",
+        "",
+        `**Đang miễn phí trên ${platformLabel}.**`,
+        "",
+        truncateForField(params.offer.description, 900) ?? "Nhận nhanh trước khi ưu đãi kết thúc."
+      ].join("\n")
+    )
+    .addFields(
+      {
+        name: "Giá",
+        value: `\`${params.offer.originalPriceText}\` - ${STEAM_UPDATE_BUILD_ARROW} **0đ**`,
+        inline: false
+      },
+      {
+        name: "Nên nhận trước",
+        value: params.offer.endsAt ? `<t:${toDiscordTimestamp(params.offer.endsAt)}:R>` : "Trong thời gian ưu đãi",
+        inline: true
+      }
+    )
+    .setFooter({
+      text: `Source: ${platformLabel} storefront`
+    });
+
+  if (params.offer.startsAt || params.offer.endsAt) {
+    embed.addFields({
+      name: "Khung thời gian",
+      value: [
+        params.offer.startsAt ? `- Bắt đầu: <t:${toDiscordTimestamp(params.offer.startsAt)}:F>` : null,
+        params.offer.endsAt ? `- Kết thúc: <t:${toDiscordTimestamp(params.offer.endsAt)}:F>` : null
+      ]
+        .filter((line): line is string => Boolean(line))
+        .join("\n"),
+      inline: false
+    });
+  }
+
+  if (params.offer.seller) {
+    embed.addFields({
+      name: params.offer.platform === "steam" ? "Nhà phát hành" : "Seller",
+      value: params.offer.seller,
+      inline: true
+    });
+  }
+
+  if (params.offer.imageUrl) {
+    embed.setImage(params.offer.imageUrl);
+  }
+
+  return embed;
+}
+
+function buildFreeGameRow(params: SendFreeGameNotificationParams): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setLabel(params.offer.platform === "steam" ? "Nhận trên Steam" : "Nhận trên Epic")
+      .setStyle(ButtonStyle.Link)
+      .setURL(params.offer.storeUrl)
+  );
 }
 
 function buildActivationTokenEmbed(options: {
@@ -851,6 +928,14 @@ export class DiscordJsTicketGateway implements DiscordTicketGateway {
     await channel.send({
       embeds: [embed],
       components: [buildSteamUpdateRow(params)]
+    });
+  }
+
+  public async sendFreeGameNotification(params: SendFreeGameNotificationParams): Promise<void> {
+    const channel = await this.getTextChannel(params.channelId);
+    await channel.send({
+      embeds: [buildFreeGameEmbed(params)],
+      components: [buildFreeGameRow(params)]
     });
   }
 

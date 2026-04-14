@@ -12,6 +12,11 @@ function seedBaseEnv(): void {
   delete process.env.HEALTH_SERVER_ENABLED;
   delete process.env.HEALTH_HOST;
   delete process.env.HEALTH_CHECK_PATH;
+  delete process.env.STEAM_FREE_GAMES_CHANNEL_ID;
+  delete process.env.EPIC_FREE_GAMES_CHANNEL_ID;
+  delete process.env.FREE_GAMES_POLL_MINUTES;
+  delete process.env.FREE_GAMES_COUNTRY_CODE;
+  delete process.env.FREE_GAMES_LOCALE;
 }
 
 describe("getBotEnv", () => {
@@ -38,5 +43,18 @@ describe("getBotEnv", () => {
     expect(env.healthServer.enabled).toBe(true);
     expect(env.healthServer.port).toBe(10000);
     expect(env.healthServer.host).toBe("0.0.0.0");
+  });
+
+  it("fills the free game channels from the built-in guild defaults", () => {
+    seedBaseEnv();
+    process.env.DISCORD_GUILD_ID = "1492076309323714570";
+
+    const env = getBotEnv();
+
+    expect(env.freeGames.enabled).toBe(true);
+    expect(env.freeGames.steamChannelId).toBe("1492115864848433222");
+    expect(env.freeGames.epicChannelId).toBe("1492115804953641055");
+    expect(env.freeGames.countryCode).toBe("VN");
+    expect(env.freeGames.locale).toBe("vi");
   });
 });

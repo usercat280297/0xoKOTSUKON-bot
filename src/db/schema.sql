@@ -118,6 +118,31 @@ CREATE TABLE IF NOT EXISTS steam_update_states (
 ALTER TABLE steam_update_states
   ADD COLUMN IF NOT EXISTS last_notified_build_id TEXT NULL;
 
+CREATE TABLE IF NOT EXISTS free_game_states (
+  platform TEXT NOT NULL,
+  game_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  is_currently_free BOOLEAN NOT NULL DEFAULT FALSE,
+  offer_key TEXT NULL,
+  starts_at TIMESTAMPTZ NULL,
+  ends_at TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (platform, game_id)
+);
+
+ALTER TABLE free_game_states
+  ADD COLUMN IF NOT EXISTS offer_key TEXT NULL;
+
+ALTER TABLE free_game_states
+  ADD COLUMN IF NOT EXISTS starts_at TIMESTAMPTZ NULL;
+
+ALTER TABLE free_game_states
+  ADD COLUMN IF NOT EXISTS ends_at TIMESTAMPTZ NULL;
+
+CREATE INDEX IF NOT EXISTS free_game_states_platform_free_idx
+  ON free_game_states(platform, is_currently_free);
+
 CREATE TABLE IF NOT EXISTS daily_checkins (
   guild_id TEXT NOT NULL,
   user_id TEXT NOT NULL,

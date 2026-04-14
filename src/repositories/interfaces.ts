@@ -58,6 +58,29 @@ export interface SteamUpdateStateRepository {
   upsertLastNotifiedBuild(appId: number, buildId: string): Promise<void>;
 }
 
+export type FreeGamePlatform = "steam" | "epic";
+
+export interface FreeGameStateRecord {
+  gameId: string;
+  title: string;
+  isCurrentlyFree: boolean;
+  offerKey: string | null;
+}
+
+export interface FreeGameStateRepository {
+  getStates(platform: FreeGamePlatform, gameIds: string[]): Promise<Map<string, FreeGameStateRecord>>;
+  listCurrentlyFree(platform: FreeGamePlatform): Promise<Map<string, FreeGameStateRecord>>;
+  upsertState(input: {
+    platform: FreeGamePlatform;
+    gameId: string;
+    title: string;
+    isCurrentlyFree: boolean;
+    offerKey: string | null;
+    startsAt: Date | null;
+    endsAt: Date | null;
+  }): Promise<void>;
+}
+
 export interface DailyCheckinRepository {
   hasCheckinOnDate(guildId: string, userId: string, date: string): Promise<boolean>;
   createCheckin(guildId: string, userId: string, date: string): Promise<void>;

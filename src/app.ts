@@ -6,12 +6,14 @@ import { createPool } from "./db/pool";
 import { handleButtonInteraction, handleModalSubmitInteraction, handleStringSelectMenuInteraction } from "./interactions/router";
 import { PostgresGuildConfigRepository } from "./repositories/postgresGuildConfigRepository";
 import { PostgresDailyCheckinRepository } from "./repositories/postgresDailyCheckinRepository";
+import { PostgresFreeGameStateRepository } from "./repositories/postgresFreeGameStateRepository";
 import { PostgresPanelRepository } from "./repositories/postgresPanelRepository";
 import { PostgresSteamUpdateStateRepository } from "./repositories/postgresSteamUpdateStateRepository";
 import { PostgresTicketRepository } from "./repositories/postgresTicketRepository";
 import { BusinessHoursService } from "./services/businessHoursService";
 import { DailyCheckinService } from "./services/dailyCheckinService";
 import { DiscordJsTicketGateway } from "./services/discordGateway";
+import { FreeGameMonitorService } from "./services/freeGameMonitorService";
 import { PanelService } from "./services/panelService";
 import { PermissionService } from "./services/permissionService";
 import { SelfRoleService } from "./services/selfRoleService";
@@ -43,6 +45,7 @@ export function createBotApp(env: BotEnv): BotApp {
 
   const guildConfigs = new PostgresGuildConfigRepository(pool);
   const dailyCheckins = new PostgresDailyCheckinRepository(pool);
+  const freeGameStates = new PostgresFreeGameStateRepository(pool);
   const panelRepository = new PostgresPanelRepository(pool);
   const steamUpdateStates = new PostgresSteamUpdateStateRepository(pool);
   const ticketRepository = new PostgresTicketRepository(pool);
@@ -57,6 +60,7 @@ export function createBotApp(env: BotEnv): BotApp {
   const selfRoleService = new SelfRoleService(gateway);
   const dailyCheckinService = new DailyCheckinService(dailyCheckins, env.ticketTimezone);
   const steamActivationScreenshots = new TesseractSteamActivationScreenshotService();
+  const freeGames = new FreeGameMonitorService(gateway, freeGameStates, env.freeGames);
   const steamUpdates = new SteamUpdateMonitorService(gateway, steamUpdateStates, env.steamUpdates);
   let deadlineSweepTimer: NodeJS.Timeout | null = null;
 
@@ -157,6 +161,9 @@ export function createBotApp(env: BotEnv): BotApp {
     pool,
     async start() {
       await client.login(env.discordToken);
+      await freeGames.start().catch((error) => {
+        console.error("Failed to start free game monitor.", error);
+      });
       await steamUpdates.start().catch((error) => {
         console.error("Failed to start Steam update monitor.", error);
       });
@@ -174,6 +181,7 @@ export function createBotApp(env: BotEnv): BotApp {
         clearInterval(deadlineSweepTimer);
         deadlineSweepTimer = null;
       }
+      await freeGames.stop();
       await steamUpdates.stop();
       client.destroy();
       await pool.end();
