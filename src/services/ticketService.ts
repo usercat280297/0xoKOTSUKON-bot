@@ -78,6 +78,10 @@ const DEFAULT_DONATION_ALLOWED_ROLE_IDS_BY_GUILD: Record<string, string[]> = {
     "1492130703549267999"
   ]
 };
+const EXTERNALLY_MANAGED_PANEL_CHANNEL_IDS_BY_GUILD: Record<string, string[]> = {
+  "1492076309323714570": ["1492135004942110740", "1492112521451274240"]
+};
+const EXTERNALLY_MANAGED_TICKET_MESSAGE = "Ticket này do bot cũ quản lý.";
 
 export class TicketService {
   public constructor(
@@ -97,6 +101,13 @@ export class TicketService {
       return {
         ok: false,
         message: "Panel hoặc loại ticket này không còn hoạt động."
+      };
+    }
+
+    if (this.isExternallyManagedPanel(route.panel)) {
+      return {
+        ok: false,
+        message: "Panel này do bot cũ quản lý."
       };
     }
 
@@ -232,7 +243,7 @@ export class TicketService {
 
     for (const ticket of openTickets) {
       const route = await this.resolveTicketRoute(ticket);
-      if (!route || !this.isSteamActivationPanel(route.panel)) {
+      if (!route || this.isExternallyManagedPanel(route.panel) || !this.isSteamActivationPanel(route.panel)) {
         continue;
       }
 
@@ -315,7 +326,7 @@ export class TicketService {
     }
 
     const route = await this.resolveTicketRoute(ticket);
-    if (!route) {
+    if (!route || this.isExternallyManagedPanel(route.panel)) {
       return;
     }
 
@@ -459,7 +470,15 @@ export class TicketService {
     }
 
     const route = await this.resolveTicketRoute(ticket);
-    if (!route || !this.permissions.isStaff(actor.actorRoleIds, route.option.staffRoleId, actor.hasManageChannels)) {
+    if (!route) {
+      return { ok: false, message: "KhĂ´ng resolve Ä‘Æ°á»£c route cá»§a ticket." };
+    }
+
+    if (this.isExternallyManagedPanel(route.panel)) {
+      return { ok: false, message: EXTERNALLY_MANAGED_TICKET_MESSAGE };
+    }
+
+    if (!this.permissions.isStaff(actor.actorRoleIds, route.option.staffRoleId, actor.hasManageChannels)) {
       return { ok: false, message: "Bạn không có quyền claim ticket này." };
     }
 
@@ -508,6 +527,10 @@ export class TicketService {
     const route = await this.resolveTicketRoute(ticket);
     if (!route) {
       return { ok: false, message: "Không resolve được route của ticket." };
+    }
+
+    if (this.isExternallyManagedPanel(route.panel)) {
+      return { ok: false, message: EXTERNALLY_MANAGED_TICKET_MESSAGE };
     }
 
     if (
@@ -576,6 +599,10 @@ export class TicketService {
       return { ok: false, message: "Không resolve được route của ticket." };
     }
 
+    if (this.isExternallyManagedPanel(route.panel)) {
+      return { ok: false, message: EXTERNALLY_MANAGED_TICKET_MESSAGE };
+    }
+
     const isRequester = actor.actorId === ticket.userId;
     const isStaff = this.permissions.isStaff(actor.actorRoleIds, route.option.staffRoleId, actor.hasManageChannels);
     if (!isRequester && !isStaff) {
@@ -615,7 +642,15 @@ export class TicketService {
     }
 
     const route = await this.resolveTicketRoute(ticket);
-    if (!route || !this.isDonationPanel(route.panel)) {
+    if (!route) {
+      return { ok: false, message: "KhĂ´ng resolve Ä‘Æ°á»£c route cá»§a ticket." };
+    }
+
+    if (this.isExternallyManagedPanel(route.panel)) {
+      return { ok: false, message: EXTERNALLY_MANAGED_TICKET_MESSAGE };
+    }
+
+    if (!this.isDonationPanel(route.panel)) {
       return { ok: false, message: "Nút này chỉ dùng cho ticket donate." };
     }
 
@@ -665,7 +700,15 @@ export class TicketService {
     }
 
     const route = await this.resolveTicketRoute(ticket);
-    if (!route || !this.isDonationPanel(route.panel)) {
+    if (!route) {
+      return { ok: false, message: "KhĂ´ng resolve Ä‘Æ°á»£c route cá»§a ticket." };
+    }
+
+    if (this.isExternallyManagedPanel(route.panel)) {
+      return { ok: false, message: EXTERNALLY_MANAGED_TICKET_MESSAGE };
+    }
+
+    if (!this.isDonationPanel(route.panel)) {
       return { ok: false, message: "Lệnh này chỉ dùng cho ticket donate." };
     }
 
@@ -743,7 +786,15 @@ export class TicketService {
     }
 
     const route = await this.resolveTicketRoute(ticket);
-    if (!route || !this.isSteamActivationPanel(route.panel)) {
+    if (!route) {
+      return { ok: false, message: "KhĂ´ng resolve Ä‘Æ°á»£c route cá»§a ticket." };
+    }
+
+    if (this.isExternallyManagedPanel(route.panel)) {
+      return { ok: false, message: EXTERNALLY_MANAGED_TICKET_MESSAGE };
+    }
+
+    if (!this.isSteamActivationPanel(route.panel)) {
       return { ok: false, message: "Lệnh này chỉ dùng cho ticket Steam Activation." };
     }
 
@@ -800,7 +851,15 @@ export class TicketService {
     }
 
     const route = await this.resolveTicketRoute(ticket);
-    if (!route || !this.isSteamActivationPanel(route.panel)) {
+    if (!route) {
+      return { ok: false, message: "KhĂ´ng resolve Ä‘Æ°á»£c route cá»§a ticket." };
+    }
+
+    if (this.isExternallyManagedPanel(route.panel)) {
+      return { ok: false, message: EXTERNALLY_MANAGED_TICKET_MESSAGE };
+    }
+
+    if (!this.isSteamActivationPanel(route.panel)) {
       return { ok: false, message: "Nút này chỉ dùng cho ticket Steam Activation." };
     }
 
@@ -851,7 +910,15 @@ export class TicketService {
     }
 
     const route = await this.resolveTicketRoute(ticket);
-    if (!route || !this.isSteamActivationPanel(route.panel)) {
+    if (!route) {
+      return { ok: false, message: "KhĂ´ng resolve Ä‘Æ°á»£c route cá»§a ticket." };
+    }
+
+    if (this.isExternallyManagedPanel(route.panel)) {
+      return { ok: false, message: EXTERNALLY_MANAGED_TICKET_MESSAGE };
+    }
+
+    if (!this.isSteamActivationPanel(route.panel)) {
       return { ok: false, message: "Nút support chỉ dùng cho ticket Steam Activation." };
     }
 
@@ -907,7 +974,15 @@ export class TicketService {
     }
 
     const route = await this.resolveTicketRoute(ticket);
-    if (!route || !this.permissions.isStaff(actor.actorRoleIds, route.option.staffRoleId, actor.hasManageChannels)) {
+    if (!route) {
+      return { ok: false, message: "KhĂ´ng resolve Ä‘Æ°á»£c route cá»§a ticket." };
+    }
+
+    if (this.isExternallyManagedPanel(route.panel)) {
+      return { ok: false, message: EXTERNALLY_MANAGED_TICKET_MESSAGE };
+    }
+
+    if (!this.permissions.isStaff(actor.actorRoleIds, route.option.staffRoleId, actor.hasManageChannels)) {
       return { ok: false, message: "Bạn không có quyền mở lại ticket này." };
     }
 
@@ -955,6 +1030,10 @@ export class TicketService {
 
   private isDonationPanel(panel: TicketPanelWithOptions): boolean {
     return panel.template === "donation";
+  }
+
+  private isExternallyManagedPanel(panel: TicketPanelWithOptions): boolean {
+    return (EXTERNALLY_MANAGED_PANEL_CHANNEL_IDS_BY_GUILD[panel.guildId] ?? []).includes(panel.channelId);
   }
 
   private getExtraAllowedRoleIds(panel: TicketPanelWithOptions, guildConfig: Awaited<ReturnType<GuildConfigRepository["getByGuildId"]>>): string[] {

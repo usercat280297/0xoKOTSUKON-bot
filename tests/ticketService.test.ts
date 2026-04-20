@@ -444,6 +444,154 @@ describe("TicketService", () => {
     ]);
   });
 
+  it("ignores screenshot uploads for steam panels managed by the old bot", async () => {
+    panels.seedPanel({
+      ...makeSteamPanel(),
+      id: "panel-steam-old-bot",
+      guildId: "1492076309323714570",
+      channelId: "1492135004942110740",
+      options: [
+        {
+          ...makeSteamPanel().options[0],
+          id: "steam-option-old-bot",
+          panelId: "panel-steam-old-bot"
+        }
+      ]
+    });
+
+    tickets.seedTicket({
+      id: "ticket-steam-old-bot",
+      guildId: "1492076309323714570",
+      userId: "user-1",
+      channelId: "steam-ticket-channel-old-bot",
+      optionId: "steam-option-old-bot",
+      status: "open",
+      originalCategoryId: "steam-category",
+      claimedBy: "staff-1",
+      closedBy: null,
+      closedAt: null,
+      transcriptMessageId: null
+    });
+
+    await service.handleIncomingTicketMessage({
+      channelId: "steam-ticket-channel-old-bot",
+      authorId: "user-1",
+      attachments: [
+        {
+          name: "proof.webp",
+          url: "https://example.com/proof.webp",
+          contentType: "image/webp"
+        }
+      ]
+    });
+
+    expect(screenshots.seenUrls).toEqual([]);
+    expect(gateway.channelMessages).toEqual([]);
+    expect(gateway.verificationPrompts).toEqual([]);
+  });
+
+  it("ignores donation proof uploads for donate panels managed by the old bot", async () => {
+    panels.seedPanel({
+      ...makeDonationPanel(),
+      id: "panel-donation-old-bot",
+      guildId: "1492076309323714570",
+      channelId: "1492112521451274240",
+      options: [
+        {
+          ...makeDonationPanel().options[0],
+          id: "donation-option-old-bot",
+          panelId: "panel-donation-old-bot"
+        }
+      ]
+    });
+
+    tickets.seedTicket({
+      id: "ticket-donation-old-bot",
+      guildId: "1492076309323714570",
+      userId: "user-1",
+      channelId: "donation-ticket-channel-old-bot",
+      optionId: "donation-option-old-bot",
+      status: "open",
+      originalCategoryId: "donate-category",
+      claimedBy: null,
+      closedBy: null,
+      closedAt: null,
+      transcriptMessageId: null
+    });
+
+    await service.handleIncomingTicketMessage({
+      channelId: "donation-ticket-channel-old-bot",
+      authorId: "user-1",
+      attachments: [
+        {
+          name: "proof.png",
+          url: "https://example.com/donate-proof.png",
+          contentType: "image/png"
+        }
+      ]
+    });
+
+    expect(gateway.channelMessages).toEqual([]);
+    expect(tickets.events).toEqual([]);
+  });
+
+  it("skips timeout processing for steam tickets managed by the old bot", async () => {
+    panels.seedPanel({
+      ...makeSteamPanel(),
+      id: "panel-steam-old-bot",
+      guildId: "1492076309323714570",
+      channelId: "1492135004942110740",
+      options: [
+        {
+          ...makeSteamPanel().options[0],
+          id: "steam-option-old-bot",
+          panelId: "panel-steam-old-bot"
+        }
+      ]
+    });
+
+    tickets.seedTicket({
+      id: "ticket-steam-old-bot",
+      guildId: "1492076309323714570",
+      userId: "user-1",
+      channelId: "steam-ticket-channel-old-bot",
+      optionId: "steam-option-old-bot",
+      status: "open",
+      originalCategoryId: "steam-category",
+      claimedBy: "staff-1",
+      closedBy: null,
+      closedAt: null,
+      transcriptMessageId: null
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam-old-bot",
+      actorId: "staff-1",
+      eventType: "ticket.claimed",
+      payload: {},
+      createdAt: new Date("2026-04-10T14:00:00.000Z")
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam-old-bot",
+      actorId: "user-1",
+      eventType: "ticket.activation_requested",
+      payload: {},
+      createdAt: new Date("2026-04-10T14:05:00.000Z")
+    });
+    await tickets.addEvent({
+      ticketId: "ticket-steam-old-bot",
+      actorId: "admin-1",
+      eventType: "ticket.activation_token_sent",
+      payload: {},
+      createdAt: new Date("2026-04-10T14:10:00.000Z")
+    });
+
+    await service.processExpiredSteamDeadlines();
+
+    expect((await tickets.findById("ticket-steam-old-bot"))?.status).toBe("open");
+    expect(gateway.deletedChannels).toEqual([]);
+    expect(gateway.channelMessages).toEqual([]);
+  });
+
   it("allows DONATOR members to open steam activation tickets", async () => {
     guildConfigs.current = {
       guildId: "guild-1",
